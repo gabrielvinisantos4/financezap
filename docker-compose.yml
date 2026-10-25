@@ -1,0 +1,67 @@
+# Ambiente completo para rodar localmente ou num servidor único (VPS).
+# Uso: cp .env.example .env  (preencha)  &&  docker compose up -d --build
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: financezap
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-troque-esta-senha}
+      POSTGRES_DB: financezap
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U financezap"]
+      interval: 5s
+      retries: 10
+    restart: unless-stopped
+
+  redis:
+    image: redis:7
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redisdata:/data
+    restart: unless-stopped
+
+  migrate:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://financezap:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/financezap
+      REDIS_URL: redis://redis:6379
+    command: ["sh", "-c", "npm run db:migrate && npm run db:seed"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  web:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://financezap:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/financezap
+      REDIS_URL: redis://redis:6379
+    ports:
+      - "3000:3000"
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+  worker:
+    build: .
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://financezap:${POSTGRES_PASSWORD:-troque-esta-senha}@postgres:5432/financezap
+      REDIS_URL: redis://redis:6379
+    command: ["npm", "run", "worker"]
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_started
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:

@@ -1,26 +1,134 @@
 @import "tailwindcss";
+@import "@fontsource-variable/archivo/wdth.css";
+
+@theme {
+  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #1b2a4a;
+  --color-ink-soft: #4a5874;
+  --color-ink-faint: #8a94a8;
+  --color-paper: #f5f6f8;
+  --color-surface: #ffffff;
+  --color-line: #dfe3ea;
+  --color-gain: #1e7a4c;
+  --color-gain-soft: #e3f2ea;
+  --color-loss: #b3261e;
+  --color-loss-soft: #f8e6e4;
+  --color-coin: #e2a336;
+  --color-coin-soft: #fbf0d9;
+}
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  color-scheme: light;
 }
 
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+html {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  -webkit-text-size-adjust: 100%;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-sans);
+  font-stretch: 100%;
+  line-height: 1.5;
+}
+
+/* Títulos usam a largura expandida da Archivo: é a assinatura visual do produto */
+.display {
+  font-stretch: 125%;
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.02;
+}
+.wide {
+  font-stretch: 112%;
+  font-weight: 650;
+}
+
+/* Todo valor em dinheiro alinha por coluna */
+.money {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+}
+
+:focus-visible {
+  outline: 3px solid var(--color-coin);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* Formulários */
+.field {
+  display: grid;
+  gap: 0.35rem;
+}
+.field > span {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--color-ink-soft);
+}
+.input {
+  width: 100%;
+  border: 1px solid var(--color-line);
+  background: var(--color-surface);
+  border-radius: 10px;
+  padding: 0.7rem 0.85rem;
+  font-size: 1rem;
+  color: var(--color-ink);
+}
+.input:focus {
+  outline: none;
+  border-color: var(--color-ink);
+  box-shadow: 0 0 0 3px rgb(27 42 74 / 0.12);
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  padding: 0.7rem 1.3rem;
+  font-weight: 650;
+  font-stretch: 110%;
+  transition: background-color 0.15s, transform 0.1s;
+}
+.btn:active {
+  transform: translateY(1px);
+}
+.btn-primary {
+  background: var(--color-ink);
+  color: #fff;
+}
+.btn-primary:hover {
+  background: #26395f;
+}
+.btn-coin {
+  background: var(--color-coin);
+  color: var(--color-ink);
+}
+.btn-coin:hover {
+  background: #d6942a;
+}
+.btn-ghost {
+  background: transparent;
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+}
+.btn-ghost:hover {
+  background: var(--color-surface);
+}
+.btn-danger {
+  background: var(--color-loss);
+  color: #fff;
 }
