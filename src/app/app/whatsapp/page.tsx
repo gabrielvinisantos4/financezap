@@ -1,7 +1,8 @@
 import { appContext } from "@/server/app-context";
 import { getLinkedNumber } from "@/server/whatsapp/linking";
 import { getEntitlement } from "@/server/billing/entitlements";
-import { env } from "@/server/config/env";
+import Link from "next/link";
+import { env, integrations } from "@/server/config/env";
 import { PageHeader, Panel } from "@/components/ui";
 import { LinkWhatsapp } from "@/components/link-whatsapp";
 import { ConfirmButton } from "@/components/forms";
@@ -23,7 +24,15 @@ export default async function WhatsappPage() {
       <PageHeader title="WhatsApp" description="Vincule o número que vai conversar com o assistente." />
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title={linked ? "Número vinculado" : "Vincular meu WhatsApp"}>
-          {linked ? (
+          {!integrations.whatsappConfigured() ? (
+            <div className="grid gap-4 text-sm text-ink-soft">
+              <p className="rounded-xl bg-coin-soft px-4 py-3 text-ink">
+                O número oficial do FinanceZap no WhatsApp ainda não foi ativado. Por enquanto não há para onde enviar o código de vínculo.
+              </p>
+              <p>Enquanto isso, você pode testar o assistente pelo simulador: ele funciona igual à conversa no WhatsApp e grava os lançamentos na sua conta.</p>
+              {env().SIMULATOR_ENABLED && <Link href="/app/simulador" className="btn btn-primary w-fit">Abrir o simulador</Link>}
+            </div>
+          ) : linked ? (
             <div className="grid gap-4">
               <p className="wide text-2xl">{formatPhone(linked)}</p>
               <p className="text-sm text-ink-soft">
