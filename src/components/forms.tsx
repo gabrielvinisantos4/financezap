@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useEffect, useRef } from "react";
+import { startTransition, useActionState, useEffect, useRef } from "react";
 import { useFormStatus } from "react-dom";
 import type { FormState } from "@/app/actions/auth";
 
@@ -31,7 +31,18 @@ export function ActionForm({
     if (resetOnSuccess && state?.message) ref.current?.reset();
   }, [state, resetOnSuccess]);
   return (
-    <form ref={ref} action={formAction} className={className} noValidate>
+    <form
+      ref={ref}
+      action={formAction}
+      onSubmit={(e) => {
+        // Evita o reset automático do React 19: em caso de erro, o que a pessoa digitou continua no formulário.
+        e.preventDefault();
+        const data = new FormData(e.currentTarget, (e.nativeEvent as SubmitEvent).submitter);
+        startTransition(() => formAction(data));
+      }}
+      className={className}
+      noValidate
+    >
       {children}
       <div aria-live="polite" className="min-h-0">
         {state?.error && <p className="rounded-lg bg-loss-soft px-3 py-2 text-sm text-loss">{state.error}</p>}
