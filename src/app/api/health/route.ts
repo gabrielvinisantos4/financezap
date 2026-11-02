@@ -12,7 +12,8 @@ export async function GET() {
     checks.database = await healthCheck();
   } catch (err) {
     // Só o código/mensagem do driver (sem a string de conexão) para diagnóstico
-    const e = err as { code?: string; message?: string };
+    const outer = err as { cause?: unknown };
+    const e = (outer.cause ?? err) as { code?: string; message?: string };
     databaseError = `${e.code ?? ""} ${(e.message ?? "").replace(/postgres(ql)?:\/\/[^\s]+/g, "[url]")}`.trim().slice(0, 200);
   }
   if (redisEnabled()) {
