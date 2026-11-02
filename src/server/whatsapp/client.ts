@@ -53,7 +53,29 @@ export async function sendReply(to: string, reply: Reply, userId: string | null)
   return ids;
 }
 
+/**
+ * Celulares do Brasil às vezes chegam da Meta sem o nono dígito (55 + DDD + 8 dígitos).
+ * Retorna o mesmo número com o 9, ou null se não for o caso.
+ */
+export function brazilWithNinthDigit(waId: string): string | null {
+  const m = /^55(\d{2})([6-9]\d{7})$/.exec(waId);
+  return m ? `55${m[1]}9${m[2]}` : null;
+}
+
 export async function sendRaw(to: string, body: Record<string, unknown>, userId: string | null): Promise<string> {
+  try {
+    return await sendRawOnce(to, body, userId);
+  } catch (err) {
+    // 131030 = destinatário fora da lista permitida (número de teste). Tenta o formato com o nono dígito.
+    const alt = brazilWithNinthDigit(to);
+    if (alt && err instanceof WhatsAppSendError && err.message.includes("131030")) {
+      return sendRawOnce(alt, { ...body, to: alt }, userId);
+    }
+    throw err;
+  }
+}
+
+async function sendRawOnce(to: string, body: Record<string, unknown>, userId: string | null): Promise<string> {
   const e = env();
   const kind = String(body.type ?? "text");
   if (e.WHATSAPP_DRY_RUN) {
