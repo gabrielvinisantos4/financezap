@@ -64,7 +64,10 @@ let cached: Env | null = null;
 
 export function env(): Env {
   if (cached) return cached;
-  const parsed = schema.safeParse(process.env);
+  // Na Vercel, sem APP_URL configurado, usa o domínio de produção do projeto
+  const source = { ...process.env };
+  if (!source.APP_URL && source.VERCEL_PROJECT_PRODUCTION_URL) source.APP_URL = `https://${source.VERCEL_PROJECT_PRODUCTION_URL}`;
+  const parsed = schema.safeParse(source);
   if (!parsed.success) {
     const issues = parsed.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");
     throw new Error(`Configuração inválida: ${issues}`);

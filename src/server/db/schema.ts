@@ -199,6 +199,8 @@ export const subscriptions = pgTable(
     provider: text("provider").notNull().default("asaas"),
     providerCustomerId: text("provider_customer_id"),
     providerSubscriptionId: text("provider_subscription_id"),
+    providerCheckoutId: text("provider_checkout_id"),
+    paymentMethod: text("payment_method"), // pix | credit_card | manual
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     graceUntil: timestamp("grace_until", { withTimezone: true }),
     canceledAt: timestamp("canceled_at", { withTimezone: true }),
@@ -209,6 +211,8 @@ export const subscriptions = pgTable(
     uniqueIndex("subscriptions_provider_uq").on(t.providerSubscriptionId),
     index("subscriptions_user_idx").on(t.userId),
     index("subscriptions_status_idx").on(t.status),
+    index("subscriptions_customer_idx").on(t.providerCustomerId),
+    uniqueIndex("subscriptions_checkout_uq").on(t.providerCheckoutId),
   ],
 );
 

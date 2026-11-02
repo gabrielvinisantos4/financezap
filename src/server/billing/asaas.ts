@@ -52,19 +52,59 @@ async function call<T>(method: string, path: string, body?: unknown): Promise<T>
   return json;
 }
 
+/** Link da página do Asaas Checkout (sandbox e produção têm hosts diferentes). */
+export function checkoutUrl(id: string, link?: string | null): string {
+  if (link) return link;
+  const host = env().ASAAS_BASE_URL.includes("sandbox") ? "https://sandbox.asaas.com" : "https://www.asaas.com";
+  return `${host}/checkoutSession/show?id=${encodeURIComponent(id)}`;
+}
+
 export const asaas = {
   createCustomer: (input: { name: string; email: string; cpfCnpj: string; mobilePhone?: string | null; externalReference: string }) =>
     call<{ id: string }>("POST", "/customers", { ...input, notificationDisabled: false }),
 
-  createSubscription: (input: { customer: string; value: number; nextDueDate: string; cycle: "MONTHLY" | "YEARLY"; description: string; externalReference: string }) =>
-    // billingType UNDEFINED: o cliente escolhe Pix, boleto ou cartão na página da fatura
-    call<AsaasSubscription>("POST", "/subscriptions", { ...input, billingType: "UNDEFINED" }),
+  /** Assinatura por Pix: a cada ciclo o Asaas gera uma cobrança Pix (QR Code na fatura). */
+  createPixSubscription: (input: { customer: string; value: number; nextDueDate: string; cycle: "MONTHLY" | "YEARLY"; description: string; externalReference: string }) =>
+    call<AsaasSubscription>("POST", "/subscriptions", { ...input, billingType: "PIX" }),
+
+  /**
+   * Cartão recorrente pelo Asaas Checkout (página segura do Asaas): o cliente informa
+   * o cartão lá, o Asaas cria a assinatura e cobra o mesmo cartão a cada ciclo.
+   * Nenhum dado de cartão passa pelo FinanceZap.
+   */
+  createRecurringCardCheckout: (input: {
+    customer: string;
+    value: number;
+    cycle: "MONTHLY" | "YEARLY";
+    nextDueDate: string; // "YYYY-MM-DD HH:mm:ss"
+    itemName: string;
+    itemDescription: string;
+    externalReference: string;
+    successUrl: string;
+    cancelUrl: string;
+    expiredUrl: string;
+  }) =>
+    call<{ id: string; link?: string | null }>("POST", "/checkouts", {
+      billingTypes: ["CREDIT_CARD"],
+      chargeTypes: ["RECURRENT"],
+      minutesToExpire: 60,
+      customer: input.customer,
+      externalReference: input.externalReference,
+      callback: { successUrl: input.successUrl, cancelUrl: input.cancelUrl, expiredUrl: input.expiredUrl },
+      items: [{ name: input.itemName.slice(0, 30), description: input.itemDescription.slice(0, 150), quantity: 1, value: input.value }],
+      subscription: { cycle: input.cycle, nextDueDate: input.nextDueDate },
+    }),
+
+  findCustomerByExternalReference: (externalReference: string) =>
+    call<{ data: { id: string }[] }>("GET", `/customers?externalReference=${encodeURIComponent(externalReference)}`),
 
   listSubscriptionPayments: (subscriptionId: string) => call<{ data: AsaasPayment[] }>("GET", `/subscriptions/${encodeURIComponent(subscriptionId)}/payments`),
 
   getPayment: (paymentId: string) => call<AsaasPayment>("GET", `/payments/${encodeURIComponent(paymentId)}`),
 
   getSubscription: (subscriptionId: string) => call<AsaasSubscription>("GET", `/subscriptions/${encodeURIComponent(subscriptionId)}`),
+
+  cancelCheckout: (checkoutId: string) => call<unknown>("POST", `/checkouts/${encodeURIComponent(checkoutId)}/cancel`),
 
   cancelSubscription: (subscriptionId: string) => call<{ deleted: boolean; id: string }>("DELETE", `/subscriptions/${encodeURIComponent(subscriptionId)}`),
 };

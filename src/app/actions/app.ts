@@ -27,6 +27,7 @@ import { getEntitlement } from "@/server/billing/entitlements";
 import { cancelSubscription, checkoutSchema, startCheckout } from "@/server/billing/subscriptions";
 import { createLinkCode, unlinkNumber } from "@/server/whatsapp/linking";
 import { deleteAccount } from "@/server/account/privacy";
+import { rateLimit } from "@/server/security/rate-limit";
 import { verifyCredentials } from "@/server/auth/users";
 import type { FormState } from "./auth";
 
@@ -222,15 +223,16 @@ export async function unlinkWhatsappAction() {
 /* ---------------- Assinatura ---------------- */
 export async function checkoutAction(_: FormState, form: FormData): Promise<FormState> {
   const user = await requireUser();
+  if (!(await rateLimit(`checkout:${user.id}`, 6, 3600))) return { error: "Muitas tentativas de pagamento. Aguarde alguns minutos." };
   const result = await guard(async () => {
-    const input = checkoutSchema.parse({ planSlug: form.get("plan"), cycle: form.get("cycle"), cpfCnpj: form.get("cpfCnpj") });
+    const input = checkoutSchema.parse({ planSlug: form.get("plan"), cycle: form.get("cycle"), method: form.get("method"), cpfCnpj: form.get("cpfCnpj") });
     return startCheckout(user.id, input);
   });
   if (result && "error" in result) return result;
-  const r = result as { invoiceUrl: string | null };
-  if (r.invoiceUrl) redirect(r.invoiceUrl);
+  const r = result as { redirectUrl: string | null };
+  if (r.redirectUrl) redirect(r.redirectUrl);
   revalidatePath("/app/assinatura");
-  return { message: "Assinatura criada. A fatura foi enviada para o seu e-mail." };
+  return { message: "Cobrança criada. O Asaas enviou o link de pagamento para o seu e-mail." };
 }
 
 export async function cancelSubscriptionAction(_: FormState): Promise<FormState> {

@@ -1,4 +1,4 @@
-import { and, asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, isNotNull, isNull } from "drizzle-orm";
 import { z } from "zod";
 import { db } from "../db/client";
 import { billingEvents, payments, plans, subscriptions, users, type Plan, type Subscription } from "../db/schema";
@@ -7,7 +7,7 @@ import { safeEqual } from "../security/crypto";
 import { addDays, addMonths, todayIn } from "../finance/dates";
 import { FinanceError } from "../finance/errors";
 import { opEvent } from "../ops/events";
-import { asaas, AsaasError, type AsaasPayment } from "./asaas";
+import { asaas, AsaasError, checkoutUrl, type AsaasPayment } from "./asaas";
 
 export async function listActivePlans(): Promise<Plan[]> {
   return db().select().from(plans).where(eq(plans.active, true)).orderBy(asc(plans.sortOrder));
@@ -35,6 +35,7 @@ export async function currentSubscription(userId: string): Promise<(Subscription
 export const checkoutSchema = z.object({
   planSlug: z.string().min(1).max(40),
   cycle: z.enum(["monthly", "yearly"]),
+  method: z.enum(["pix", "credit_card"], { errorMap: () => ({ message: "Escolha Pix ou cartão" }) }),
   // CPF/CNPJ é exigido pelo Asaas para emitir cobranças. É repassado ao gateway
   // e NÃO é armazenado no nosso banco.
   cpfCnpj: z
@@ -43,56 +44,105 @@ export const checkoutSchema = z.object({
     .refine((v) => v.length === 11 || v.length === 14, "CPF ou CNPJ inválido"),
 });
 
-export async function startCheckout(userId: string, input: z.infer<typeof checkoutSchema>): Promise<{ invoiceUrl: string | null; subscriptionId: string }> {
+export type CheckoutResult = { redirectUrl: string | null; subscriptionId: string };
+
+/** Data/hora no fuso de São Paulo no formato que o Asaas Checkout espera. */
+function spDateTime(now = new Date()) {
+  const sp = new Date(now.getTime() - 3 * 3600_000);
+  return sp.toISOString().slice(0, 19).replace("T", " ");
+}
+
+async function ensureAsaasCustomer(userId: string, cpfCnpj: string): Promise<string> {
+  const [existing] = await db()
+    .select({ id: subscriptions.providerCustomerId })
+    .from(subscriptions)
+    .where(and(eq(subscriptions.userId, userId), eq(subscriptions.provider, "asaas")))
+    .orderBy(desc(subscriptions.createdAt))
+    .limit(1);
+  if (existing?.id) return existing.id;
+  const found = await asaas.findCustomerByExternalReference(userId).catch(() => ({ data: [] as { id: string }[] }));
+  if (found.data[0]) return found.data[0].id;
+  const [user] = await db().select().from(users).where(eq(users.id, userId));
+  if (!user) throw new FinanceError("not_found", "Usuário não encontrado.");
+  const c = await asaas.createCustomer({ name: user.name, email: user.email, cpfCnpj, mobilePhone: user.phoneE164?.replace(/^55/, "") ?? null, externalReference: user.id });
+  return c.id;
+}
+
+export async function startCheckout(userId: string, input: z.infer<typeof checkoutSchema>): Promise<CheckoutResult> {
   const plan = await getPlanBySlug(input.planSlug);
   if (!plan || !plan.active) throw new FinanceError("invalid", "Plano indisponível.");
   const price = input.cycle === "monthly" ? plan.priceMonthlyCents : plan.priceYearlyCents;
   if (price <= 0) throw new FinanceError("invalid", "Este plano ainda não tem preço configurado.");
 
+  // Assinatura paga em andamento bloqueia nova compra; cortesia/teste não bloqueia
   const current = await currentSubscription(userId);
-  if (current && (current.status === "active" || current.status === "past_due") && current.currentPeriodEnd && current.currentPeriodEnd > new Date()) {
+  if (current && current.provider !== "manual" && (current.status === "active" || current.status === "past_due") && current.currentPeriodEnd && current.currentPeriodEnd > new Date()) {
     throw new FinanceError("conflict", "Você já tem uma assinatura ativa. Cancele a atual para trocar de plano.");
   }
 
   const [user] = await db().select().from(users).where(eq(users.id, userId));
   if (!user) throw new FinanceError("not_found", "Usuário não encontrado.");
 
-  // Checkout anterior nunca pago: cancela no gateway para não deixar cobrança órfã
-  if (current?.status === "pending" && current.providerSubscriptionId) {
-    await asaas.cancelSubscription(current.providerSubscriptionId).catch(() => undefined);
-    await db().update(subscriptions).set({ status: "expired" }).where(eq(subscriptions.id, current.id));
+  // Tentativa anterior nunca paga: cancela no gateway para não deixar cobrança órfã
+  const pendings = await db().select().from(subscriptions).where(and(eq(subscriptions.userId, userId), eq(subscriptions.status, "pending")));
+  for (const p of pendings) {
+    if (p.providerSubscriptionId) await asaas.cancelSubscription(p.providerSubscriptionId).catch(() => undefined);
+    if (p.providerCheckoutId) await asaas.cancelCheckout(p.providerCheckoutId).catch(() => undefined);
+    await db().update(subscriptions).set({ status: "expired" }).where(eq(subscriptions.id, p.id));
   }
 
-  let customerId = current?.providerCustomerId ?? null;
-  if (!customerId) {
-    const c = await asaas.createCustomer({ name: user.name, email: user.email, cpfCnpj: input.cpfCnpj, mobilePhone: user.phoneE164?.replace(/^55/, "") ?? null, externalReference: user.id });
-    customerId = c.id;
+  let customerId: string;
+  try {
+    customerId = await ensureAsaasCustomer(userId, input.cpfCnpj);
+  } catch (err) {
+    await opEvent("error", "billing.customer_failed", "Falha ao cadastrar cliente no Asaas", { error: String((err as Error).message).slice(0, 300) }, userId);
+    throw new FinanceError("invalid", "Não foi possível iniciar o pagamento. Confira o CPF/CNPJ e tente novamente.");
   }
 
-  // Cria a assinatura local primeiro (pending) para usar o id como externalReference
+  // Assinatura local primeiro (pending): o id dela vai como externalReference
   const [sub] = await db()
     .insert(subscriptions)
-    .values({ userId, planId: plan.id, cycle: input.cycle, status: "pending", priceCents: price, provider: "asaas", providerCustomerId: customerId })
+    .values({ userId, planId: plan.id, cycle: input.cycle, status: "pending", priceCents: price, provider: "asaas", providerCustomerId: customerId, paymentMethod: input.method })
     .returning();
 
+  const cycle = input.cycle === "monthly" ? "MONTHLY" : "YEARLY";
+  const label = `${env().APP_NAME} ${plan.name} (${input.cycle === "monthly" ? "mensal" : "anual"})`;
   try {
-    const remote = await asaas.createSubscription({
+    if (input.method === "pix") {
+      const remote = await asaas.createPixSubscription({
+        customer: customerId,
+        value: price / 100,
+        nextDueDate: todayIn(user.timezone),
+        cycle,
+        description: label,
+        externalReference: sub.id,
+      });
+      await db().update(subscriptions).set({ providerSubscriptionId: remote.id }).where(eq(subscriptions.id, sub.id));
+      const list = await asaas.listSubscriptionPayments(remote.id).catch(() => ({ data: [] as AsaasPayment[] }));
+      const first = list.data[0];
+      if (first) await upsertPayment(userId, sub.id, first);
+      return { redirectUrl: first?.invoiceUrl ?? null, subscriptionId: sub.id };
+    }
+
+    const back = `${env().APP_URL}/app/assinatura`;
+    const checkout = await asaas.createRecurringCardCheckout({
       customer: customerId,
       value: price / 100,
-      nextDueDate: todayIn(user.timezone),
-      cycle: input.cycle === "monthly" ? "MONTHLY" : "YEARLY",
-      description: `${env().APP_NAME} — plano ${plan.name} (${input.cycle === "monthly" ? "mensal" : "anual"})`,
+      cycle,
+      nextDueDate: spDateTime(),
+      itemName: `Plano ${plan.name}`,
+      itemDescription: label,
       externalReference: sub.id,
+      successUrl: `${back}?pagamento=processando`,
+      cancelUrl: `${back}?pagamento=cancelado`,
+      expiredUrl: `${back}?pagamento=expirado`,
     });
-    await db().update(subscriptions).set({ providerSubscriptionId: remote.id }).where(eq(subscriptions.id, sub.id));
-    const list = await asaas.listSubscriptionPayments(remote.id).catch(() => ({ data: [] as AsaasPayment[] }));
-    const first = list.data[0];
-    if (first) await upsertPayment(userId, sub.id, first);
-    return { invoiceUrl: first?.invoiceUrl ?? null, subscriptionId: sub.id };
+    await db().update(subscriptions).set({ providerCheckoutId: checkout.id }).where(eq(subscriptions.id, sub.id));
+    return { redirectUrl: checkoutUrl(checkout.id, checkout.link), subscriptionId: sub.id };
   } catch (err) {
     await db().update(subscriptions).set({ status: "expired" }).where(eq(subscriptions.id, sub.id));
-    await opEvent("error", "billing.checkout_failed", "Falha ao criar assinatura no Asaas", { error: String((err as Error).message).slice(0, 300) }, userId);
-    if (err instanceof AsaasError) throw new FinanceError("invalid", "Não foi possível iniciar o pagamento. Confira o CPF/CNPJ e tente novamente.");
+    await opEvent("error", "billing.checkout_failed", "Falha ao iniciar pagamento no Asaas", { method: input.method, error: String((err as Error).message).slice(0, 300) }, userId);
+    if (err instanceof AsaasError) throw new FinanceError("invalid", "Não foi possível iniciar o pagamento agora. Tente novamente em instantes.");
     throw err;
   }
 }
@@ -130,7 +180,8 @@ const asaasEventSchema = z
       .object({ id: z.string(), customer: z.string(), subscription: z.string().nullish(), status: z.string(), value: z.number(), dueDate: z.string().nullish(), invoiceUrl: z.string().nullish(), billingType: z.string().nullish(), paymentDate: z.string().nullish(), confirmedDate: z.string().nullish(), externalReference: z.string().nullish() })
       .passthrough()
       .optional(),
-    subscription: z.object({ id: z.string(), status: z.string().optional(), deleted: z.boolean().optional() }).passthrough().optional(),
+    subscription: z.object({ id: z.string(), customer: z.string().nullish(), externalReference: z.string().nullish(), status: z.string().optional(), deleted: z.boolean().optional() }).passthrough().optional(),
+    checkout: z.object({ id: z.string(), customer: z.string().nullish(), status: z.string().nullish() }).passthrough().optional(),
   })
   .passthrough();
 
@@ -179,9 +230,43 @@ export async function handleAsaasWebhook(rawBody: string, token: string | null):
   return { status: 200 };
 }
 
-async function findSubscriptionByProviderId(providerSubscriptionId: string) {
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Encontra a assinatura local de uma assinatura do Asaas. Assinaturas por cartão
+ * nascem no Asaas Checkout, então na primeira notificação ainda não sabemos o id:
+ * vinculamos pelo externalReference (id local) ou pelo cliente + checkout pendente.
+ */
+async function findSubscriptionByProviderId(providerSubscriptionId: string, hint: { customer?: string | null; externalReference?: string | null } = {}) {
   const [s] = await db().select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, providerSubscriptionId));
-  return s ?? null;
+  if (s) return s;
+
+  let customer = hint.customer ?? null;
+  let externalReference = hint.externalReference ?? null;
+  if (env().ASAAS_API_KEY && (!customer || !externalReference)) {
+    const remote = await asaas.getSubscription(providerSubscriptionId).catch(() => null);
+    customer ??= remote?.customer ?? null;
+    externalReference ??= remote?.externalReference ?? null;
+  }
+
+  let local: Subscription | null = null;
+  if (externalReference && UUID_RE.test(externalReference)) {
+    const [byRef] = await db().select().from(subscriptions).where(and(eq(subscriptions.id, externalReference), isNull(subscriptions.providerSubscriptionId)));
+    local = byRef ?? null;
+  }
+  if (!local && customer) {
+    const [byCustomer] = await db()
+      .select()
+      .from(subscriptions)
+      .where(and(eq(subscriptions.providerCustomerId, customer), eq(subscriptions.status, "pending"), isNull(subscriptions.providerSubscriptionId), isNotNull(subscriptions.providerCheckoutId)))
+      .orderBy(desc(subscriptions.createdAt))
+      .limit(1);
+    local = byCustomer ?? null;
+  }
+  if (!local) return null;
+  const [linked] = await db().update(subscriptions).set({ providerSubscriptionId }).where(eq(subscriptions.id, local.id)).returning();
+  await opEvent("info", "billing.subscription_linked", "Assinatura do Asaas vinculada", { method: local.paymentMethod }, local.userId);
+  return linked;
 }
 
 async function upsertPayment(userId: string, subscriptionId: string | null, p: AsaasPayment) {
@@ -211,7 +296,7 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
   if (ev.payment) {
     const subId = ev.payment.subscription;
     if (!subId) return; // cobrança avulsa: não é deste produto
-    const sub = await findSubscriptionByProviderId(subId);
+    const sub = await findSubscriptionByProviderId(subId, { customer: ev.payment.customer });
     if (!sub) {
       await opEvent("warn", "billing.unknown_subscription", "Evento de pagamento para assinatura desconhecida", { event: ev.event });
       return;
@@ -230,6 +315,11 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
       // Não reativa assinatura cancelada pelo cliente, mas estende o período pago
       const status = sub.status === "canceled" ? "canceled" : "active";
       await db().update(subscriptions).set({ status, currentPeriodEnd: periodEnd, graceUntil: null }).where(eq(subscriptions.id, sub.id));
+      // O plano pago substitui o período de teste/cortesia
+      await db()
+        .update(subscriptions)
+        .set({ status: "expired", currentPeriodEnd: new Date() })
+        .where(and(eq(subscriptions.userId, sub.userId), eq(subscriptions.provider, "manual"), eq(subscriptions.status, "active")));
       if (sub.status !== "active") await opEvent("info", "billing.activated", "Assinatura ativada/regularizada por pagamento confirmado", { plan: sub.planId }, sub.userId);
     } else if (ev.event === "PAYMENT_OVERDUE") {
       if (sub.status === "active" || sub.status === "pending") {
@@ -248,8 +338,17 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
     }
     return;
   }
+  if (ev.checkout) {
+    if (ev.event === "CHECKOUT_EXPIRED" || ev.event === "CHECKOUT_CANCELED") {
+      await db()
+        .update(subscriptions)
+        .set({ status: "expired" })
+        .where(and(eq(subscriptions.providerCheckoutId, ev.checkout.id), eq(subscriptions.status, "pending"), isNull(subscriptions.providerSubscriptionId)));
+    }
+    return;
+  }
   if (ev.subscription) {
-    const sub = await findSubscriptionByProviderId(ev.subscription.id);
+    const sub = await findSubscriptionByProviderId(ev.subscription.id, { customer: ev.subscription.customer, externalReference: ev.subscription.externalReference });
     if (!sub) return;
     if (ev.event === "SUBSCRIPTION_DELETED" || ev.event === "SUBSCRIPTION_INACTIVATED") {
       if (sub.status !== "canceled" && sub.status !== "expired") {

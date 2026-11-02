@@ -22,8 +22,14 @@ const STATUS: Record<string, [string, "gain" | "loss" | "coin" | "neutral"]> = {
 };
 const PAY: Record<string, string> = { PENDING: "Aguardando", RECEIVED: "Pago", CONFIRMED: "Confirmado", OVERDUE: "Vencido", REFUNDED: "Estornado", RECEIVED_IN_CASH: "Pago" };
 
-export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ plano?: string }> }) {
-  const { plano } = await searchParams;
+const RETURN_MSG: Record<string, [string, "gain" | "coin"]> = {
+  processando: ["Recebemos seu pagamento no Asaas. Assim que o cartão for aprovado, o acesso é liberado automaticamente — costuma levar poucos segundos. Atualize esta página.", "gain"],
+  cancelado: ["Pagamento cancelado. Nenhuma cobrança foi feita. Você pode escolher outro plano ou forma de pagamento abaixo.", "coin"],
+  expirado: ["O link de pagamento expirou. Gere um novo abaixo.", "coin"],
+};
+
+export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ plano?: string; pagamento?: string }> }) {
+  const { plano, pagamento } = await searchParams;
   const { user } = await appContext();
   const [sub, plans, ent, usage, history] = await Promise.all([
     currentSubscription(user.id),
@@ -32,18 +38,21 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
     monthlyUsage(user.id),
     db().select().from(payments).where(eq(payments.userId, user.id)).orderBy(desc(payments.createdAt)).limit(12),
   ]);
-  const canBuy = !sub || ["canceled", "expired"].includes(sub.status) || (sub.status === "pending" && !ent.active);
+  const isTrial = sub?.provider === "manual";
+  const canBuy = !sub || isTrial || ["canceled", "expired"].includes(sub.status) || (sub.status === "pending" && !ent.active) || (sub.status === "pending" && sub.paymentMethod === "credit_card");
+  const notice = pagamento ? RETURN_MSG[pagamento] : undefined;
   const pendingInvoice = history.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
 
   return (
     <>
       <PageHeader title="Assinatura" />
+      {notice && <p role="status" className={`mb-6 rounded-xl px-4 py-3 text-sm ${notice[1] === "gain" ? "bg-gain-soft text-gain" : "bg-coin-soft text-ink"}`}>{notice[0]}</p>}
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <div className="grid content-start gap-6">
           {sub && (
             <Panel title={`Plano ${sub.plan.name}`} action={<Badge tone={STATUS[sub.status][1]}>{STATUS[sub.status][0]}</Badge>}>
-              <p className="money text-lg">{formatBRL(sub.priceCents)} {sub.cycle === "monthly" ? "por mês" : "por ano"}{sub.provider === "manual" ? " · cortesia" : ""}</p>
-              {sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>}
+              <p className="money text-lg">{isTrial ? "Período de teste grátis" : `${formatBRL(sub.priceCents)} ${sub.cycle === "monthly" ? "por mês" : "por ano"}${sub.paymentMethod === "credit_card" ? " · cartão de crédito" : sub.paymentMethod === "pix" ? " · Pix" : ""}`}</p>
+              {sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>}
               {pendingInvoice?.invoiceUrl && (
                 <a href={pendingInvoice.invoiceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-coin mt-4">
                   Pagar fatura de <Money cents={pendingInvoice.valueCents} />
@@ -67,7 +76,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
             </Panel>
           )}
           {canBuy && (
-            <Panel title={sub ? "Assinar novamente" : "Escolha seu plano"}>
+            <Panel title={isTrial ? "Assine para continuar depois do teste" : sub && sub.status !== "pending" ? "Assinar novamente" : "Escolha seu plano"}>
               {!integrations.asaasConfigured() ? (
                 <p className="text-sm text-ink-soft">Os pagamentos ainda não foram ativados nesta instalação.</p>
               ) : plans.length === 0 ? (
@@ -75,7 +84,18 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               ) : (
                 <CheckoutForm
                   initial={plano}
-                  plans={plans.map((p) => ({ slug: p.slug, name: p.name, monthly: formatBRL(p.priceMonthlyCents), yearly: formatBRL(p.priceYearlyCents), features: p.features }))}
+                  plans={plans.map((p) => {
+                    const saving = p.priceMonthlyCents * 12 - p.priceYearlyCents;
+                    return {
+                      slug: p.slug,
+                      name: p.name,
+                      description: p.description,
+                      monthly: formatBRL(p.priceMonthlyCents),
+                      yearly: formatBRL(p.priceYearlyCents),
+                      yearlySavings: saving > 0 ? `Economize ${formatBRL(saving)} por ano` : null,
+                      features: p.features,
+                    };
+                  })}
                 />
               )}
             </Panel>

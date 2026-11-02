@@ -22,6 +22,13 @@
       "when": 1792894580725,
       "tag": "0002_inbound_reply",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1793633081985,
+      "tag": "0003_subscription_payment_method",
+      "breakpoints": true
     }
   ]
 }

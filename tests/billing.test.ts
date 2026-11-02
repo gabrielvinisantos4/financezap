@@ -2,7 +2,7 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { closeDb, db } from "@/server/db/client";
 import { billingEvents, plans, subscriptions } from "@/server/db/schema";
-import { cancelSubscription, handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
+import { cancelSubscription, grantManualSubscription, handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
 import { getEntitlement } from "@/server/billing/entitlements";
 import { setAsaasFetcher } from "@/server/billing/asaas";
 import { makeUser, resetDb } from "./helpers";
@@ -11,13 +11,20 @@ const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
 
 /** Simula a API do Asaas (sandbox) para os testes. */
 function fakeAsaas() {
-  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0 };
+  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0, lastCheckout: null as null | Record<string, unknown> };
   setAsaasFetcher(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     state.calls.push(`${method} ${url.replace(/^.*\/v3/, "")}`);
     const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
     if (method === "POST" && url.endsWith("/customers")) return json({ id: "cus_TEST" });
+    if (method === "GET" && url.includes("/customers?")) return json({ data: [] });
+    if (method === "POST" && url.endsWith("/checkouts")) {
+      state.lastCheckout = JSON.parse(String(init?.body));
+      return json({ id: "chk_TEST1" });
+    }
+    const subGet = url.match(/\/subscriptions\/([^/]+)$/);
+    if (method === "GET" && subGet) return json({ id: subGet[1], customer: "cus_TEST", status: "ACTIVE", value: 29.9, cycle: "MONTHLY", nextDueDate: "2026-11-02" });
     if (method === "POST" && url.endsWith("/subscriptions")) {
       const id = `sub_TEST${++state.subSeq}`;
       state.payments.set("pay_1", { id: "pay_1", customer: "cus_TEST", subscription: id, status: "PENDING", value: 19.9, dueDate: "2026-10-24", invoiceUrl: "https://sandbox.asaas.com/i/pay_1" });
@@ -46,8 +53,8 @@ describe("assinaturas com Asaas", () => {
   it("checkout cria cliente e assinatura e devolve o link da fatura; acesso só após confirmação do gateway", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
-    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", cpfCnpj: "12345678909" });
-    expect(r.invoiceUrl).toContain("asaas.com/i/");
+    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    expect(r.redirectUrl).toContain("asaas.com/i/");
     expect(asaas.calls).toContain("POST /customers");
     expect((await getEntitlement(u.id)).active).toBe(false);
     expect(await getEntitlement(u.id)).toMatchObject({ reason: "pending_payment" });
@@ -69,7 +76,7 @@ describe("assinaturas com Asaas", () => {
   it("rejeita webhook sem o token configurado e ignora evento repetido", async () => {
     fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     expect((await handleAsaasWebhook(event("evt_x", "PAYMENT_RECEIVED", { id: "pay_1", customer: "c", status: "RECEIVED", value: 1 }), "errado")).status).toBe(401);
     const body = event("evt_same", "PAYMENT_CREATED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "PENDING", value: 19.9 });
     expect(await handleAsaasWebhook(body, TOKEN)).toEqual({ status: 200 });
@@ -80,7 +87,7 @@ describe("assinaturas com Asaas", () => {
   it("inadimplência: tolerância configurável e depois bloqueio; pagamento reativa", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
 
@@ -101,7 +108,7 @@ describe("assinaturas com Asaas", () => {
   it("cancelamento mantém acesso até o fim do período pago", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
     await cancelSubscription(u.id);
@@ -113,11 +120,51 @@ describe("assinaturas com Asaas", () => {
   it("estorno/chargeback suspende o acesso", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "REFUNDED" });
     await handleAsaasWebhook(event("e2", "PAYMENT_REFUNDED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "REFUNDED", value: 19.9 }), TOKEN);
     expect((await getEntitlement(u.id, new Date(Date.now() + 6 * 86400_000))).active).toBe(false);
+  });
+
+  it("cartão recorrente: abre o Asaas Checkout, vincula a assinatura criada lá e substitui o período de teste", async () => {
+    const asaas = fakeAsaas();
+    const u = await makeUser();
+    await grantManualSubscription(u.id, "basico", 30); // período de teste
+    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "123.456.789-09" });
+    expect(r.redirectUrl).toBe("https://sandbox.asaas.com/checkoutSession/show?id=chk_TEST1");
+    expect(asaas.lastCheckout).toMatchObject({ billingTypes: ["CREDIT_CARD"], chargeTypes: ["RECURRENT"], customer: "cus_TEST", subscription: { cycle: "MONTHLY" } });
+
+    // Asaas cria a assinatura depois que o cliente paga no checkout
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_s1", event: "SUBSCRIPTION_CREATED", subscription: { id: "sub_CARD9", customer: "cus_TEST", status: "ACTIVE" } }), TOKEN);
+    const [linked] = await db().select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, "sub_CARD9"));
+    expect(linked).toMatchObject({ userId: u.id, paymentMethod: "credit_card", status: "pending" });
+
+    asaas.payments.set("pay_c1", { id: "pay_c1", customer: "cus_TEST", subscription: "sub_CARD9", status: "CONFIRMED", value: 19.9, dueDate: "2026-11-02", billingType: "CREDIT_CARD", confirmedDate: "2026-11-02" });
+    await handleAsaasWebhook(event("evt_p1", "PAYMENT_CONFIRMED", { id: "pay_c1", customer: "cus_TEST", subscription: "sub_CARD9", status: "CONFIRMED", value: 19.9 }), TOKEN);
+    const ent = await getEntitlement(u.id);
+    expect(ent).toMatchObject({ active: true, planSlug: "basico" });
+    const all = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
+    expect(all.find((s) => s.provider === "manual")?.status).toBe("expired");
+    expect(all.find((s) => s.provider === "asaas")?.status).toBe("active");
+  });
+
+  it("pagamento do cartão chegando antes do SUBSCRIPTION_CREATED também vincula", async () => {
+    const asaas = fakeAsaas();
+    const u = await makeUser();
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    asaas.payments.set("pay_c2", { id: "pay_c2", customer: "cus_TEST", subscription: "sub_CARD7", status: "CONFIRMED", value: 19.9, dueDate: "2026-11-02", confirmedDate: "2026-11-02" });
+    await handleAsaasWebhook(event("evt_p2", "PAYMENT_CONFIRMED", { id: "pay_c2", customer: "cus_TEST", subscription: "sub_CARD7", status: "CONFIRMED", value: 19.9 }), TOKEN);
+    expect((await getEntitlement(u.id)).active).toBe(true);
+  });
+
+  it("checkout expirado encerra a tentativa pendente", async () => {
+    fakeAsaas();
+    const u = await makeUser();
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_x9", event: "CHECKOUT_EXPIRED", checkout: { id: "chk_TEST1", customer: "cus_TEST", status: "EXPIRED" } }), TOKEN);
+    const [s] = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
+    expect(s.status).toBe("expired");
   });
 });

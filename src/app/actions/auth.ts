@@ -35,7 +35,7 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
     throw err;
   }
   const plan = String(form.get("plan") ?? "");
-  if (env().AUTO_TRIAL_PLAN) redirect(env().SIMULATOR_ENABLED ? "/app/simulador" : "/app/whatsapp");
+  if (env().AUTO_TRIAL_PLAN && !plan) redirect(env().SIMULATOR_ENABLED ? "/app/simulador" : "/app/whatsapp");
   redirect(plan ? `/app/assinatura?plano=${encodeURIComponent(plan)}` : "/app/assinatura");
 }
 
