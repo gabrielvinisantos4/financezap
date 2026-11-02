@@ -5,8 +5,9 @@ import { parseWebhook, verifySignature } from "./webhook";
 import { updateOutboundStatus } from "./client";
 import { enqueueInbound } from "../queue/queues";
 import { opEvent } from "../ops/events";
+import { redisEnabled } from "../security/rate-limit";
 
-export type IngestResult = { status: 200 | 401; accepted: number; duplicates: number; statuses: number };
+export type IngestResult = { status: 200 | 401; accepted: number; duplicates: number; statuses: number; inline?: string[] };
 
 /**
  * Entrada do webhook: valida assinatura, persiste cada mensagem uma única vez
@@ -27,6 +28,8 @@ export async function ingestWebhook(rawBody: string, signature: string | null): 
   const { messages, statuses } = parseWebhook(json);
   let accepted = 0;
   let duplicates = 0;
+  // Sem Redis (ex.: Vercel sem worker), quem chamou processa as mensagens logo após responder à Meta.
+  const inline: string[] = [];
   for (const m of messages) {
     const inserted = await db()
       .insert(inboundMessages)
@@ -43,6 +46,10 @@ export async function ingestWebhook(rawBody: string, signature: string | null): 
       continue;
     }
     accepted++;
+    if (!redisEnabled()) {
+      inline.push(inserted[0].id);
+      continue;
+    }
     try {
       await enqueueInbound(inserted[0].id);
     } catch (err) {
@@ -54,7 +61,7 @@ export async function ingestWebhook(rawBody: string, signature: string | null): 
     await updateOutboundStatus(s.waMessageId, s.status, s.error);
     if (s.status === "failed") await opEvent("warn", "whatsapp.delivery_failed", "Mensagem não entregue pelo WhatsApp", { waMessageId: s.waMessageId, error: s.error });
   }
-  return { status: 200, accepted, duplicates, statuses: statuses.length };
+  return { status: 200, accepted, duplicates, statuses: statuses.length, inline };
 }
 
 /** Reenfileira mensagens que ficaram presas (ex.: Redis fora do ar no momento do webhook). */
