@@ -12,6 +12,7 @@ const schema = z.object({
   DEFAULT_TIMEZONE: z.string().default("America/Sao_Paulo"),
 
   DATABASE_URL: z.string().min(1),
+  DATABASE_HOST: z.string().optional().transform((v) => v || undefined),
   DATABASE_SSL: z.enum(["disable", "require"]).default("disable"),
   DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
   REDIS_URL: z.string().optional().transform((v) => v || undefined),

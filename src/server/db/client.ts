@@ -17,8 +17,15 @@ declare global {
 export function pool(): Pool {
   if (!globalThis.__fzPool) {
     const e = env();
+    // DATABASE_HOST (opcional) troca só o host da conexão, sem mexer na senha
+    let connectionString = e.DATABASE_URL;
+    if (e.DATABASE_HOST) {
+      const u = new URL(connectionString);
+      u.hostname = e.DATABASE_HOST;
+      connectionString = u.toString();
+    }
     globalThis.__fzPool = new Pool({
-      connectionString: e.DATABASE_URL,
+      connectionString,
       max: e.DATABASE_POOL_MAX,
       // Poolers gerenciados (ex.: Supabase) exigem TLS; o certificado é de CA própria do provedor
       ssl: e.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
