@@ -23,7 +23,7 @@ function interpreterFromEnv(): Interpreter | null {
   return defaultInterpreter;
 }
 
-type InboundPayload = { text: string | null; buttonId: string | null; type: "text" | "button" | "unsupported" };
+export type InboundPayload = { text: string | null; buttonId: string | null; type: "text" | "button" | "unsupported" };
 
 /**
  * Processa uma mensagem recebida. Chamado pelo worker (BullMQ).
@@ -117,6 +117,15 @@ async function decideReply(waId: string, waMessageId: string, payload: InboundPa
     };
   }
 
+  return replyForLinkedUser(userId, waMessageId, payload, opts);
+}
+
+/**
+ * Atendimento de um cliente já identificado: assinatura, limites do plano e agente.
+ * Usado pelo WhatsApp e pelo simulador do painel (mesmas regras).
+ */
+export async function replyForLinkedUser(userId: string, waMessageId: string, payload: InboundPayload, opts: ProcessorDeps): Promise<{ reply: Reply; userId: string | null } | null> {
+  const appUrl = env().APP_URL;
   await recordUsage({ userId, type: "wa_inbound" });
 
   const ent = await getEntitlement(userId, opts.now?.() ?? new Date());

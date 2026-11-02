@@ -16,7 +16,13 @@ declare global {
 
 export function pool(): Pool {
   if (!globalThis.__fzPool) {
-    globalThis.__fzPool = new Pool({ connectionString: env().DATABASE_URL, max: 10 });
+    const e = env();
+    globalThis.__fzPool = new Pool({
+      connectionString: e.DATABASE_URL,
+      max: e.DATABASE_POOL_MAX,
+      // Poolers gerenciados (ex.: Supabase) exigem TLS; o certificado é de CA própria do provedor
+      ssl: e.DATABASE_SSL === "require" ? { rejectUnauthorized: false } : undefined,
+    });
   }
   return globalThis.__fzPool;
 }

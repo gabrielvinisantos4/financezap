@@ -12,7 +12,14 @@ const schema = z.object({
   DEFAULT_TIMEZONE: z.string().default("America/Sao_Paulo"),
 
   DATABASE_URL: z.string().min(1),
-  REDIS_URL: z.string().default("redis://127.0.0.1:6379"),
+  DATABASE_SSL: z.enum(["disable", "require"]).default("disable"),
+  DATABASE_POOL_MAX: z.coerce.number().int().min(1).max(50).default(10),
+  REDIS_URL: z.string().optional().transform((v) => v || undefined),
+
+  // Modo de teste: simulador de WhatsApp no painel e período de teste automático
+  SIMULATOR_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
+  AUTO_TRIAL_PLAN: z.string().optional().transform((v) => v || undefined),
+  AUTO_TRIAL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
 
   // Segredo para HMAC de tokens/códigos (mín. 32 chars em produção)
   APP_SECRET: z.string().min(16),

@@ -1,5 +1,5 @@
 import { healthCheck } from "@/server/ops/maintenance";
-import { redis } from "@/server/security/rate-limit";
+import { redis, redisEnabled } from "@/server/security/rate-limit";
 import { integrations } from "@/server/config/env";
 
 export const runtime = "nodejs";
@@ -10,10 +10,12 @@ export async function GET() {
   try {
     checks.database = await healthCheck();
   } catch {}
-  try {
-    checks.redis = (await redis().ping()) === "PONG";
-  } catch {}
-  const ok = checks.database && checks.redis;
+  if (redisEnabled()) {
+    try {
+      checks.redis = (await redis().ping()) === "PONG";
+    } catch {}
+  }
+  const ok = checks.database && (checks.redis || !redisEnabled());
   return Response.json(
     {
       ok,

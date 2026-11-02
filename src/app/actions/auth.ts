@@ -6,6 +6,8 @@ import { createUser, signupSchema, verifyCredentials } from "@/server/auth/users
 import { endSession, startSession } from "@/server/auth/session";
 import { rateLimit } from "@/server/security/rate-limit";
 import { FinanceError } from "@/server/finance/errors";
+import { applySignupPerks } from "@/server/auth/signup-perks";
+import { env } from "@/server/config/env";
 
 export type FormState = { error?: string; message?: string } | null;
 
@@ -26,12 +28,14 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
   if (!parsed.success) return { error: parsed.error.issues[0].message };
   try {
     const user = await createUser(parsed.data, { ip });
+    await applySignupPerks(user.id, user.email);
     await startSession(user.id);
   } catch (err) {
     if (err instanceof FinanceError) return { error: err.userMessage };
     throw err;
   }
   const plan = String(form.get("plan") ?? "");
+  if (env().AUTO_TRIAL_PLAN) redirect(env().SIMULATOR_ENABLED ? "/app/simulador" : "/app/whatsapp");
   redirect(plan ? `/app/assinatura?plano=${encodeURIComponent(plan)}` : "/app/assinatura");
 }
 

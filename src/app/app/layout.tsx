@@ -5,6 +5,7 @@ import { getLinkedNumber } from "@/server/whatsapp/linking";
 import { AppNav, type NavItem } from "@/components/app-nav";
 import { Logo } from "@/components/ui";
 import { logoutAction } from "@/app/actions/auth";
+import { env } from "@/server/config/env";
 
 const NAV: NavItem[] = [
   { href: "/app", label: "Visão geral", icon: "◎" },
@@ -20,11 +21,13 @@ const NAV: NavItem[] = [
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const user = await requireUser();
   const [ent, linked] = await Promise.all([getEntitlement(user.id), getLinkedNumber(user.id)]);
+  const sim = env().SIMULATOR_ENABLED;
+  const nav: NavItem[] = sim ? [NAV[0], { href: "/app/simulador", label: "Simulador", icon: "✉" }, ...NAV.slice(1)] : NAV;
   return (
     <div className="mx-auto grid min-h-dvh max-w-7xl lg:grid-cols-[240px_1fr]">
       <aside className="hidden border-r border-line px-4 py-6 lg:flex lg:flex-col">
         <Logo className="mb-8 px-3" />
-        <AppNav items={NAV} variant="desktop" />
+        <AppNav items={nav} variant="desktop" />
         <div className="mt-auto px-3 pt-6 text-sm">
           <p className="truncate font-semibold">{user.name}</p>
           <p className="truncate text-ink-faint">{user.email}</p>
@@ -48,14 +51,14 @@ export default async function AppLayout({ children }: { children: React.ReactNod
             {ent.reason !== "blocked" && <Link href="/app/assinatura" className="font-semibold underline">Ver assinatura</Link>}
           </div>
         )}
-        {ent.active && !linked && (
+        {ent.active && !linked && !sim && (
           <div className="mx-4 mt-2 rounded-xl bg-coin-soft px-4 py-3 text-sm sm:mx-8 lg:mt-6" role="status">
             Falta um passo: <Link href="/app/whatsapp" className="font-semibold underline">vincule seu WhatsApp</Link> para começar a registrar pela conversa.
           </div>
         )}
         <main className="px-4 py-6 sm:px-8">{children}</main>
       </div>
-      <AppNav items={NAV} variant="mobile" />
+      <AppNav items={sim ? nav.filter((n) => n.href !== "/app/relatorios") : nav} variant="mobile" />
     </div>
   );
 }
