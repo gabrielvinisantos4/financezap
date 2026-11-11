@@ -299,3 +299,59 @@ describe("limites de gasto", () => {
     expect(st.reply.text).toContain("ainda não definiu limites");
   });
 });
+
+describe("contas fixas pelo WhatsApp", () => {
+  const i = (t: string) => interpretByRules(t, { today: TODAY });
+
+  it("entende cadastro, lista e remoção por regras", () => {
+    expect(i("meu aluguel é 1.200 todo dia 10")).toMatchObject({ intent: "fixed", fixed: { action: "set", kind: "expense", description: "Aluguel", amount: 1200, day: 10, category: "moradia" } });
+    expect(i("internet 120 todo mês dia 5")).toMatchObject({ intent: "fixed", fixed: { action: "set", amount: 120, day: 5, category: "internet-telefone" } });
+    expect(i("quais são minhas contas fixas?")).toMatchObject({ intent: "fixed", fixed: { action: "list" } });
+    expect(i("tira o aluguel das contas fixas")).toMatchObject({ intent: "fixed", fixed: { action: "remove", description: "Aluguel" } });
+    expect(i("recebo 3 mil de salário todo dia 5")).toMatchObject({ intent: "fixed", fixed: { action: "set", kind: "income", amount: 3000, day: 5 } });
+  });
+
+  it("cadastra, gera a conta a pagar quando vence em até 7 dias e 'paguei o aluguel' dá baixa sem duplicar", async () => {
+    const u = await makeUser();
+    // hoje é 24/10: vence dia 28 → já vira conta a pagar
+    const r = await send(u.id, "meu aluguel é 1.200 todo dia 28");
+    expect(r.reply.text).toContain("Conta fixa cadastrada");
+    expect(r.reply.text).toContain("28/10/2026");
+    let list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ status: "pending", amountCents: 120000, dueOn: "2026-10-28" });
+
+    const paid = await send(u.id, "paguei o aluguel 1200");
+    expect(paid.reply.text).toContain("Conta fixa paga");
+    list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ status: "paid", amountCents: 120000, occurredOn: TODAY });
+
+    const lst = await send(u.id, "minhas contas fixas");
+    expect(lst.reply.text).toContain("Dia 28 · 🏠 Aluguel · R$ 1.200,00");
+
+    const rm = await send(u.id, "tira o aluguel das contas fixas");
+    expect(rm.reply.text).toContain("encerrada");
+    expect((await send(u.id, "minhas contas fixas")).reply.text).toContain("ainda não tem contas fixas");
+  });
+
+  it("vencimento longe: não gera ainda; pedir sem valor pergunta o que falta", async () => {
+    const u = await makeUser();
+    const r = await send(u.id, "internet 120 todo mês dia 5");
+    expect(r.reply.text).toContain("05/11/2026");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
+    const q = await send(u.id, "cadastra a luz como conta fixa");
+    expect(q.reply.text).toContain("o valor e o dia do vencimento");
+  });
+
+  it("rotina diária roda uma vez só e gera as contas a pagar", async () => {
+    const { runDailyIfDue } = await import("@/server/ops/maintenance");
+    const u = await makeUser();
+    await send(u.id, "internet 120 todo mês dia 5");
+    // 1º/11 em São Paulo: dia 5 está a menos de 7 dias
+    expect(await runDailyIfDue(new Date("2026-11-01T12:00:00Z"))).toBe(true);
+    expect(await runDailyIfDue(new Date("2026-11-01T13:00:00Z"))).toBe(false);
+    const list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list[0]).toMatchObject({ status: "pending", dueOn: "2026-11-05", amountCents: 12000 });
+  });
+});

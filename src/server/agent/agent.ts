@@ -1,9 +1,11 @@
-import { and, desc, eq, gt, sql } from "drizzle-orm";
+import { and, between, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { withUser, type Tx } from "../db/client";
-import { conversationTurns, pendingActions, transactions, users, type Category, type Transaction } from "../db/schema";
+import { conversationTurns, pendingActions, recurringRules, transactions, users, type Category, type Transaction } from "../db/schema";
 import {
   createEntry,
+  createRecurringRule,
   deleteEntry,
+  generateRecurring,
   getTransaction,
   listAccounts,
   listCategories,
@@ -31,7 +33,7 @@ import { guessCategorySlug } from "../finance/categories";
 import { FinanceError } from "../finance/errors";
 import { normalize, interpretByRules, isTrivialMessage } from "./fallback";
 import { AIError, type InterpretContext, type Interpreter } from "./llm";
-import type { BudgetCommand, Changes, Entry, Interpretation, Query, Target } from "./schema";
+import type { BudgetCommand, Changes, Entry, FixedCommand, Interpretation, Query, Target } from "./schema";
 import { budgetStatuses, budgetsReply, newBudgetAlerts, removeBudget, setBudget } from "../finance/budgets";
 import * as fmt from "./format";
 import type { Reply } from "./format";
@@ -233,6 +235,8 @@ async function dispatch(userId: string, it: Interpretation, msg: IncomingMessage
       return runQuery(userId, it.query, caps, today);
     case "budget":
       return handleBudget(userId, it.budget, today, it.clarification);
+    case "fixed":
+      return handleFixed(userId, it.fixed, today, it.clarification);
     case "correct":
       return prepareCorrection(userId, it.target, it.changes, today, now, it.clarification);
     case "delete":
@@ -275,6 +279,132 @@ async function handleBudget(userId: string, cmd: BudgetCommand | null, today: IS
     lines.push("", "Eu aviso quando chegar em 80% e em 100%.");
     return { text: lines.join("\n") };
   });
+}
+
+/* -------------------------- Contas fixas --------------------------- */
+const sameName = (a: string, b: string) => {
+  const x = normalize(a);
+  const y = normalize(b);
+  return !!x && !!y && (x === y || x.includes(y) || y.includes(x));
+};
+
+async function handleFixed(userId: string, cmd: FixedCommand | null, today: ISODate, clarification: string | null): Promise<Reply> {
+  if (!cmd) return { text: clarification ?? 'Quer cadastrar uma conta fixa? Ex.: "meu aluguel é 1.200 todo dia 10".' };
+  return withUser(userId, async (tx) => {
+    const rules = await listRecurring(tx, userId);
+    const cats = await listCategories(tx, userId);
+    const catOf = (id: string | null) => cats.find((c) => c.id === id);
+
+    if (cmd.action === "list") {
+      if (!rules.length) return { text: 'Você ainda não tem contas fixas. 🔁\n\nExemplos:\n• "meu aluguel é 1.200 todo dia 10"\n• "internet 120 todo mês dia 5"\n• "recebo 3 mil de salário todo dia 5"' };
+      const exp = rules.filter((r) => r.kind === "expense");
+      const inc = rules.filter((r) => r.kind === "income");
+      const line = (r: (typeof rules)[number]) => `• Dia ${r.dayOfMonth} · ${catOf(r.categoryId)?.icon ?? "🔁"} ${r.description} · ${formatBRL(r.amountCents)}`;
+      const lines = ["🔁 Suas contas fixas", ""];
+      if (exp.length) lines.push(...exp.map(line), "", `Total de despesas fixas: ${formatBRL(exp.reduce((t, r) => t + r.amountCents, 0))} por mês`);
+      if (inc.length) lines.push("", "💰 Entradas fixas", ...inc.map(line));
+      return { text: lines.join("\n").trim() };
+    }
+
+    const matches = rules.filter(
+      (r) => r.kind === cmd.kind && ((cmd.description && sameName(r.description, cmd.description)) || (!cmd.description && cmd.category && catOf(r.categoryId)?.slug === cmd.category)),
+    );
+
+    if (cmd.action === "remove") {
+      if (!matches.length) return { text: "Não encontrei essa conta fixa. Mande *minhas contas fixas* para ver a lista." };
+      if (matches.length > 1) return { text: `Encontrei mais de uma: ${matches.map((m) => m.description).join(", ")}. Qual delas? Escreva o nome exato.` };
+      const rule = matches[0];
+      await tx.update(recurringRules).set({ active: false, updatedAt: new Date() }).where(and(eq(recurringRules.id, rule.id), eq(recurringRules.userId, userId)));
+      // Contas a pagar futuras ainda não pagas dessa conta fixa deixam de valer
+      const future = await tx
+        .select({ id: transactions.id })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), eq(transactions.recurringRuleId, rule.id), eq(transactions.status, "pending"), isNull(transactions.deletedAt), sql`${transactions.dueOn} >= ${today}`));
+      for (const f of future) await deleteEntry(tx, userId, f.id, "agent", { reason: "conta fixa encerrada" });
+      return { text: `🗑️ Conta fixa *${rule.description}* encerrada. Os meses já pagos continuam no histórico.` };
+    }
+
+    // set
+    if (!cmd.amount || !cmd.day) {
+      const what = cmd.description ?? "essa conta";
+      const missing = !cmd.amount && !cmd.day ? "o valor e o dia do vencimento" : !cmd.amount ? "o valor" : "o dia do vencimento";
+      return { text: `Para cadastrar ${what} como conta fixa, me diga ${missing}. Ex.: "${(cmd.description ?? "aluguel").toLowerCase()} ${cmd.amount ? String(cmd.amount).replace(".", ",") : "1.200"} todo dia ${cmd.day ?? 10}".` };
+    }
+    const amountCents = reaisToCents(cmd.amount);
+    const description = (cmd.description?.trim() || (cmd.kind === "expense" ? "Conta fixa" : "Entrada fixa")).slice(0, 120);
+    const slug = cmd.category && cats.some((c) => c.kind === cmd.kind && c.slug === cmd.category) ? cmd.category : guessCategorySlug(description, cmd.kind);
+    const category = cats.find((c) => c.kind === cmd.kind && c.slug === slug) ?? null;
+
+    let verb = "cadastrada";
+    let rule;
+    if (matches.length === 1) {
+      verb = "atualizada";
+      const old = matches[0];
+      let next = addMonths(today, 0, cmd.day);
+      if (next < today) next = addMonths(today, 1, cmd.day);
+      // não volta a gerar um mês que já foi gerado
+      if (old.nextDueOn > next) next = addMonths(old.nextDueOn, 0, cmd.day);
+      [rule] = await tx
+        .update(recurringRules)
+        .set({ amountCents, dayOfMonth: cmd.day, nextDueOn: next, categoryId: category?.id ?? old.categoryId, updatedAt: new Date() })
+        .where(and(eq(recurringRules.id, old.id), eq(recurringRules.userId, userId)))
+        .returning();
+    } else {
+      rule = await createRecurringRule(tx, userId, { kind: cmd.kind, amountCents, description, categoryId: category?.id ?? null, dayOfMonth: cmd.day, startOn: today });
+    }
+    // Se vence nos próximos 7 dias, já aparece como conta a pagar
+    await generateRecurring(tx, addDays(today, 7));
+    const [fresh] = await tx.select().from(recurringRules).where(eq(recurringRules.id, rule.id));
+    const pendingNow = await tx
+      .select({ dueOn: transactions.dueOn })
+      .from(transactions)
+      .where(and(eq(transactions.userId, userId), eq(transactions.recurringRuleId, rule.id), eq(transactions.status, "pending"), isNull(transactions.deletedAt)))
+      .orderBy(transactions.dueOn)
+      .limit(1);
+    const nextDue = pendingNow[0]?.dueOn ?? fresh.nextDueOn;
+    const isIncome = cmd.kind === "income";
+    return {
+      text: [
+        `🔁 ${isIncome ? "Entrada fixa" : "Conta fixa"} ${verb}!`,
+        "",
+        `${category?.icon ?? "🔁"} ${description}`,
+        `💰 ${formatBRL(amountCents)} por mês`,
+        `📅 Todo dia ${cmd.day} · próximo: ${formatBR(nextDue)}`,
+        "",
+        isIncome
+          ? "Ela entra como valor a receber alguns dias antes. Quando cair, é só me avisar: \"recebi o salário\"."
+          : `Ela aparece nas contas a pagar 7 dias antes do vencimento. Quando pagar, é só me dizer: "paguei ${description.toLowerCase()}".`,
+      ].join("\n"),
+    };
+  });
+}
+
+/**
+ * "Paguei o aluguel": se existe uma conta fixa pendente perto dessa data com o mesmo nome
+ * (ou a mesma categoria, quando só há uma), dá baixa nela em vez de lançar outra despesa.
+ */
+async function settleFixedBill(tx: Tx, userId: string, entry: Entry, date: ISODate, categoryId: string | null): Promise<Transaction | null> {
+  const candidates = await tx
+    .select()
+    .from(transactions)
+    .where(
+      and(
+        eq(transactions.userId, userId),
+        eq(transactions.kind, entry.kind),
+        eq(transactions.status, "pending"),
+        isNotNull(transactions.recurringRuleId),
+        isNull(transactions.deletedAt),
+        between(transactions.dueOn, addDays(date, -20), addDays(date, 25)),
+      ),
+    )
+    .orderBy(transactions.dueOn);
+  if (!candidates.length) return null;
+  const text = `${entry.description} ${entry.merchant ?? ""} ${entry.counterparty ?? ""}`;
+  const byName = candidates.filter((c) => normalize(text).split(" ").some((w) => w.length >= 3 && normalize(c.description).split(" ").includes(w)));
+  const byCat = categoryId ? candidates.filter((c) => c.categoryId === categoryId) : [];
+  const pick = byName.length ? byName[0] : byCat.length === 1 ? byCat[0] : null;
+  if (!pick) return null;
+  return updateEntry(tx, userId, pick.id, { status: "paid", occurredOn: date, amountCents: reaisToCents(entry.amount!), paymentMethod: entry.payment_method ?? pick.paymentMethod }, "agent", { reason: "conta fixa paga" });
 }
 
 /* ---------------------------- Registro ----------------------------- */
@@ -333,6 +463,23 @@ async function recordEntries(userId: string, entries: Entry[], messageId: string
         sourceMessageId: entries.length > 1 ? `${messageId}#${i + 1}` : messageId,
       };
     });
+
+    // "Paguei o aluguel": dá baixa na conta fixa pendente em vez de duplicar
+    if (entries.length === 1 && !entries[0].installments && confidence >= 0.55) {
+      const cat = cats.find((c) => c.kind === inputs[0].kind && c.slug === inputs[0].categorySlug) ?? null;
+      const settled = await settleFixedBill(tx, userId, entries[0], inputs[0].occurredOn, cat?.id ?? null);
+      if (settled) {
+        const c = cats.find((x) => x.id === settled.categoryId);
+        const reply = fmt.recordedReply([settled], c ? { name: c.name, icon: c.icon } : null, {});
+        const title = settled.kind === "income" ? "✅ Entrada fixa recebida!" : "✅ Conta fixa paga!";
+        let text = reply.text.replace(/^✅ [^\n]+/, title).replace("Seu lançamento foi salvo com sucesso.", "Dei baixa na conta fixa deste mês — não lancei em dobro.");
+        if (settled.kind === "expense") {
+          const alerts = await newBudgetAlerts(tx, userId, today, [settled.categoryId]);
+          if (alerts.length) text += `\n\n${alerts.join("\n\n")}`;
+        }
+        return { text };
+      }
+    }
 
     // Interpretação incerta ou valor muito alto: confirma antes de gravar
     const big = inputs.some((x) => x.amountCents >= 5_000_000);
@@ -446,7 +593,7 @@ async function runQuery(userId: string, q: Query, caps: AgentCapabilities, today
         return fmt.payablesReply(await payables(tx, userId, addDays(today, 30)), today);
       case "recurring": {
         const rules = await listRecurring(tx, userId);
-        if (!rules.length) return { text: "Você ainda não tem despesas recorrentes cadastradas. Dá para cadastrar no painel web." };
+        if (!rules.length) return { text: 'Você ainda não tem contas fixas. Ex.: "meu aluguel é 1.200 todo dia 10".' };
         return { text: ["🔁 Recorrentes", "", ...rules.map((r) => `• Dia ${r.dayOfMonth} · ${r.description} · ${formatBRL(r.amountCents)}`)].join("\n") };
       }
       case "evolution": {

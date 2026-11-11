@@ -244,6 +244,7 @@ export function interpretByRules(message: string, ctx: Pick<InterpretContext, "t
   if (/(ajuda|como funciona|como (eu )?uso|o que (voce )?(faz|sabe)|comandos|menu)/.test(n)) return emptyInterpretation("help");
 
   return (
+    parseFixed(original, n) ??
     parseBudget(original, n) ??
     parseDelete(original, n) ??
     parseCorrection(original, n) ??
@@ -262,6 +263,23 @@ function budgetCategory(n: string): string | null {
   }
   const g = guessCategorySlug(n, "expense");
   return g === "outros" ? null : g;
+}
+
+function parseFixed(original: string, n: string): Interpretation | null {
+  const mentions = /\b(conta fixa|contas fixas|gasto fixo|gastos fixos|todo mes|todos os meses|mensalmente|todo dia \d{1,2}|recorrente)\b/.test(n);
+  if (!mentions) return null;
+  const kind: "income" | "expense" = /\b(recebo|ganho|salario|entra)\b/.test(n) ? "income" : "expense";
+  const fixed = (action: "set" | "remove" | "list", extra: Partial<{ description: string | null; amount: number | null; day: number | null; category: string | null }> = {}): Interpretation =>
+    emptyInterpretation("fixed", { fixed: { action, kind, description: null, amount: null, day: null, category: null, ...extra }, confidence: 0.75 });
+  if (/^(quais|qual|lista|listar|mostra|me mostra|minhas?)\b/.test(n) || n.endsWith("?")) return fixed("list");
+  const category = guessCategorySlug(original, kind);
+  const label = DEFAULT_EXPENSE_CATEGORIES.concat().find((c) => c.slug === category);
+  const word = n.match(/\b(aluguel|condominio|internet|luz|energia|agua|gas|celular|telefone|academia|escola|faculdade|plano de saude|netflix|spotify|financiamento|consorcio|salario|mensalidade|seguro)\b/)?.[1] ?? null;
+  const description = word ? capitalize(word) : label && label.slug !== "outros" ? label.name : null;
+  if (/\b(tira|tirar|remove|remover|apaga|apagar|exclui|excluir|cancela|cancelar|para de|parar)\b/.test(n)) return fixed("remove", { description, category });
+  const day = Number(n.match(/\bdia (\d{1,2})\b/)?.[1] ?? NaN);
+  const textNoDay = original.replace(/\bdia\s+\d{1,2}\b/gi, " ");
+  return fixed("set", { description, amount: extractAmount(textNoDay), day: day >= 1 && day <= 31 ? day : null, category });
 }
 
 function parseBudget(original: string, n: string): Interpretation | null {

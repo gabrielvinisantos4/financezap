@@ -4,6 +4,7 @@ import { after } from "next/server";
 import { rateLimit } from "@/server/security/rate-limit";
 import { processInbound } from "@/server/whatsapp/processor";
 import { opEvent } from "@/server/ops/events";
+import { runDailyIfDue } from "@/server/ops/maintenance";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -33,6 +34,8 @@ export async function POST(req: Request) {
           await opEvent("error", "whatsapp.inline_failed", "Falha ao processar mensagem sem fila", { inboundId: id, err: String(err) });
         }
       }
+      // Garantia extra: se o cron do dia ainda não rodou, roda agora (depois da resposta ao cliente)
+      await runDailyIfDue().catch((err) => opEvent("error", "maintenance.daily_failed", "Falha nas rotinas diárias", { err: String(err).slice(0, 300) }));
     });
   }
   return new Response(result.status === 200 ? "ok" : "invalid signature", { status: result.status });

@@ -84,13 +84,23 @@ export const budgetSchema = z.object({
   amount: z.number().positive().max(20_000_000).nullable(), // em reais (só em "set")
 });
 
+export const fixedSchema = z.object({
+  action: z.enum(["set", "remove", "list"]),
+  kind: z.enum(["income", "expense"]),
+  description: z.string().max(120).nullable(),
+  amount: z.number().positive().max(20_000_000).nullable(), // em reais
+  day: z.number().int().min(1).max(31).nullable(), // dia do vencimento
+  category: z.string().max(48).nullable(),
+});
+
 export const interpretationSchema = z.object({
-  intent: z.enum(["record", "query", "correct", "delete", "budget", "confirm", "cancel", "select_option", "help", "greeting", "out_of_scope", "unclear"]),
+  intent: z.enum(["record", "query", "correct", "delete", "budget", "fixed", "confirm", "cancel", "select_option", "help", "greeting", "out_of_scope", "unclear"]),
   entries: z.array(entrySchema).max(5),
   query: querySchema.nullable(),
   target: targetSchema.nullable(),
   changes: changesSchema.nullable(),
   budget: budgetSchema.nullable(),
+  fixed: fixedSchema.nullable(),
   selected_option: z.number().int().min(1).max(10).nullable(),
   clarification: z.string().max(300).nullable(),
   confidence: z.number().min(0).max(1),
@@ -102,6 +112,7 @@ export type Query = z.infer<typeof querySchema>;
 export type Target = z.infer<typeof targetSchema>;
 export type Changes = z.infer<typeof changesSchema>;
 export type BudgetCommand = z.infer<typeof budgetSchema>;
+export type FixedCommand = z.infer<typeof fixedSchema>;
 
 /* ------------------------------------------------------------------ */
 /* JSON Schema equivalente para Structured Outputs (strict)             */
@@ -181,11 +192,21 @@ export const interpretationJsonSchema = obj({
       amount: nullable({ ...num, description: "Valor do limite em reais (só para set)" }),
     }),
   ),
+  fixed: nullable(
+    obj({
+      action: { type: "string", enum: ["set", "remove", "list"] },
+      kind: { type: "string", enum: ["income", "expense"] },
+      description: nullable({ ...str, description: "Nome da conta fixa, ex.: Aluguel" }),
+      amount: nullable({ ...num, description: "Valor mensal em reais" }),
+      day: nullable({ ...int, description: "Dia do mês do vencimento (1 a 31)" }),
+      category: nullable({ ...str, description: "Slug de categoria do tipo certo" }),
+    }),
+  ),
   selected_option: nullable(int),
   clarification: nullable({ ...str, description: "Pergunta curta ao usuário quando faltar informação" }),
   confidence: { ...num, description: "0 a 1" },
 });
 
 export function emptyInterpretation(intent: Interpretation["intent"], extra: Partial<Interpretation> = {}): Interpretation {
-  return { intent, entries: [], query: null, target: null, changes: null, budget: null, selected_option: null, clarification: null, confidence: 1, ...extra };
+  return { intent, entries: [], query: null, target: null, changes: null, budget: null, fixed: null, selected_option: null, clarification: null, confidence: 1, ...extra };
 }
