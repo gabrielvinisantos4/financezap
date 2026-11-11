@@ -196,7 +196,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
       </div>
       <div className="mt-8 flex justify-center">
         <Link href="/app/conta#apagar-lancamentos" className="lg-btn inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold text-loss">
-          Apagar todos os lançamentos
+          Apagar lançamentos
         </Link>
       </div>
     </>

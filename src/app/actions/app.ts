@@ -293,14 +293,17 @@ export async function deleteAllEntriesAction(_: FormState, form: FormData): Prom
   if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "APAGAR") return { error: "Digite APAGAR para confirmar." };
   const ok = await verifyCredentials(user.email, String(form.get("password") ?? ""));
   if (!ok) return { error: "Senha incorreta." };
+  const raw = String(form.get("scope") ?? "all");
+  const scope = raw === "expense" || raw === "income" ? raw : null;
   const res = await guard(async () => {
     const n = await withUser(user.id, async (tx) => {
-      const count = await deleteAllEntries(tx, user.id, "user");
+      const count = await deleteAllEntries(tx, user.id, "user", scope);
       // Os avisos de limite do mês voltam a valer para os próximos lançamentos
-      await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, user.id));
+      if (scope !== "income") await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, user.id));
       return count;
     });
-    return { message: n ? `Pronto: ${n} ${n === 1 ? "lançamento apagado" : "lançamentos apagados"}. Contas, categorias, limites e contas fixas continuam cadastrados.` : "Você não tinha lançamentos para apagar." };
+    const what = scope === "expense" ? ["gasto apagado", "gastos apagados", "gastos"] : scope === "income" ? ["recebimento apagado", "recebimentos apagados", "recebimentos"] : ["lançamento apagado", "lançamentos apagados", "lançamentos"];
+    return { message: n ? `Pronto: ${n} ${n === 1 ? what[0] : what[1]}. Contas, categorias, limites e contas fixas continuam cadastrados.` : `Você não tinha ${what[2]} para apagar.` };
   });
   revalidatePath("/app", "layout");
   return res;

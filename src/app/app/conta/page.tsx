@@ -44,11 +44,26 @@ export default async function AccountPage() {
             <a href="/app/conta/exportar" className="btn btn-ghost mt-4">Baixar meus dados (JSON)</a>
           </Panel>
           <section id="apagar-lancamentos" className="scroll-mt-24">
-            <Panel title="Apagar todos os lançamentos">
+            <Panel title="Apagar lançamentos">
               <p className="text-sm text-ink-soft">
-                Apaga de uma vez todos os gastos e recebimentos registrados, pelo WhatsApp ou pelo painel. Sua conta, a assinatura, o WhatsApp vinculado, as contas, categorias, limites e contas fixas continuam. Útil para começar do zero depois de testar.
+                Apaga de uma vez os gastos, os recebimentos ou tudo o que foi registrado, pelo WhatsApp ou pelo painel. Sua conta, a assinatura, o WhatsApp vinculado, as contas, categorias, limites e contas fixas continuam. Útil para começar do zero depois de testar.
               </p>
               <ActionForm action={deleteAllEntriesAction} className="mt-4 grid gap-3" resetOnSuccess>
+                <fieldset className="grid gap-2">
+                  <legend className="mb-1 text-sm font-semibold text-ink-soft">O que apagar</legend>
+                  <div className="grid grid-cols-3 gap-1 rounded-full bg-paper p-1 text-sm font-semibold">
+                    {[
+                      ["expense", "Gastos"],
+                      ["income", "Recebimentos"],
+                      ["all", "Tudo"],
+                    ].map(([v, label]) => (
+                      <label key={v} className="relative cursor-pointer rounded-full text-center text-ink-soft has-[:checked]:text-ink">
+                        <input type="radio" name="scope" value={v} defaultChecked={v === "all"} className="peer sr-only" />
+                        <span className="block rounded-full px-2 py-2 peer-checked:bg-surface peer-checked:text-ink peer-checked:shadow-[inset_0_1px_0_var(--lg-rim),inset_0_0_0_1px_var(--lg-hairline),0_8px_22px_-14px_var(--lg-drop)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-gain">{label}</span>
+                      </label>
+                    ))}
+                  </div>
+                </fieldset>
                 <label className="field">
                   <span>Digite APAGAR para confirmar</span>
                   <input className="input" name="confirm" autoComplete="off" required />
@@ -58,7 +73,7 @@ export default async function AccountPage() {
                   <PasswordInput className="input" name="password" autoComplete="current-password" required />
                 </label>
                 <Submit className="btn btn-danger w-fit" pendingText="Apagando…">
-                  Apagar todos os lançamentos
+                  Apagar
                 </Submit>
               </ActionForm>
             </Panel>

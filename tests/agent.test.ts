@@ -344,13 +344,28 @@ describe("contas fixas pelo WhatsApp", () => {
     await send(u.id, "recebi 800 de um cliente");
     expect(i("apaga todos os meus lançamentos")).toMatchObject({ intent: "delete", target: { reference: "all" } });
     expect(i("zera tudo")).toMatchObject({ intent: "delete", target: { reference: "all" } });
-    const ask = await send(u.id, "apaga todos os meus lançamentos");
+    expect(i("apaga todos os gastos")).toMatchObject({ intent: "delete", target: { reference: "all", kind: "expense" } });
+    expect(i("apagar todos os recebimentos")).toMatchObject({ intent: "delete", target: { reference: "all", kind: "income" } });
+    // sem dizer o tipo: oferece só gastos, só recebimentos ou tudo
+    const menu = await send(u.id, "apaga todos os meus lançamentos");
+    expect(menu.reply.text).toContain("O que você quer apagar?");
+    expect(menu.reply.buttons?.map((b) => b.title)).toEqual(["Só gastos", "Só recebimentos", "Tudo"]);
+    const ask = await send(u.id, "tudo");
     expect(ask.reply.text).toContain("todos os 2 lançamentos");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(2);
     expect((await send(u.id, "não")).reply.text).toContain("cancelei");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(2);
+    // só gastos
     await send(u.id, "apaga todos os meus lançamentos");
-    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 2 lançamentos");
+    expect((await send(u.id, "1")).reply.text).toContain("todos os seus gastos");
+    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 1 gasto");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toMatchObject([{ kind: "income" }]);
+    // só sobrou recebimento: vai direto para a confirmação
+    await send(u.id, "gastei 30 no mercado");
+    await send(u.id, "apaga todos os recebimentos");
+    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 1 recebimento");
+    await send(u.id, "apaga todos os meus lançamentos");
+    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 1 lançamento");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
     expect((await send(u.id, "apaga todos os meus lançamentos")).reply.text).toContain("não tem lançamentos");
   });

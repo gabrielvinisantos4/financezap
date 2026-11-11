@@ -226,9 +226,14 @@ function parseDelete(original: string, n: string): Interpretation | null {
   // "apaga todos os meus lançamentos", "zera tudo", "limpa todos os registros"
   if (
     /\b(apaga|apague|apagar|exclui|exclua|excluir|deleta|delete|remove|remova|remover|limpa|limpe|limpar|zera|zere|zerar)\b/.test(n) &&
-    (/\b(todos|todas)\b.*\b(lancamentos|gastos|registros|despesas|movimentacoes|dados)\b/.test(n) || /\b(zera|zere|zerar|limpa|limpe|limpar|apaga|apagar) (tudo|meus lancamentos|os lancamentos)\b/.test(n))
+    (/\b(todos|todas)\b.*\b(lancamentos|gastos|registros|despesas|movimentacoes|dados|recebimentos|receitas|entradas|ganhos)\b/.test(n) || /\b(zera|zere|zerar|limpa|limpe|limpar|apaga|apagar) (tudo|meus lancamentos|os lancamentos)\b/.test(n))
   ) {
-    return emptyInterpretation("delete", { target: { reference: "all", kind: null, amount: null, description: null, date: null }, confidence: 0.85 });
+    const scope: "income" | "expense" | null = /\b(todos|todas) (os |as )?(meus |minhas )?(gastos|despesas)\b/.test(n)
+      ? "expense"
+      : /\b(todos|todas) (os |as )?(meus |minhas )?(recebimentos|receitas|entradas|ganhos)\b/.test(n)
+        ? "income"
+        : null;
+    return emptyInterpretation("delete", { target: { reference: "all", kind: scope, amount: null, description: null, date: null }, confidence: 0.85 });
   }
   if (!/\b(apaga|apague|apagar|exclui|exclua|excluir|deleta|delete|remove|remova|remover|desfaz|desfazer)\b/.test(n)) return null;
   const kind: "income" | "expense" | null = /(receita|entrada|recebimento)/.test(n) ? "income" : /(gasto|despesa|compra)/.test(n) ? "expense" : null;

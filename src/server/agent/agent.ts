@@ -73,7 +73,8 @@ type PendingPayload =
   | { kind: "complete_entry"; entry: Entry; sourceMessageId: string; question: string }
   | { kind: "confirm_update"; txId: string; version: number; patch: EntryPatch; question: string }
   | { kind: "confirm_delete"; txId: string; version: number; wholeGroup: boolean; question: string }
-  | { kind: "confirm_delete_all"; count: number; question: string }
+  | { kind: "confirm_delete_all"; count: number; scope?: "expense" | "income" | null; question: string }
+  | { kind: "choose_delete_scope"; question: string }
   | { kind: "choose_target"; candidates: { id: string; label: string }[]; next: "update" | "delete"; patch: EntryPatch | null; question: string };
 
 async function openPending(tx: Tx, userId: string, payload: PendingPayload, now: Date) {
@@ -148,6 +149,11 @@ export async function handleMessage(userId: string, msg: IncomingMessage, caps: 
     if (quick.intent === "cancel") return { reply: await resolvePending(userId, ctx.pending.id, "cancel", msg, today, now), usedAi: false };
     if (quick.intent === "select_option") return { reply: await resolvePending(userId, ctx.pending.id, quick.selected_option!, msg, today, now), usedAi: false };
     const payload = ctx.pending.payload as PendingPayload;
+    if (payload.kind === "choose_delete_scope") {
+      const n = normalize(text);
+      const pick = /\b(gasto|gastos|despesa|despesas)\b/.test(n) ? 1 : /\b(recebimento|recebimentos|receita|receitas|entrada|entradas)\b/.test(n) ? 2 : /\b(tudo|todos|todas|ambos|os dois)\b/.test(n) ? 3 : null;
+      if (pick) return { reply: await resolvePending(userId, ctx.pending.id, pick, msg, today, now), usedAi: false };
+    }
     if (payload.kind === "complete_entry") {
       const onlyAmount = text.match(/^(?:r\$\s*)?\d[\d.,]*\s*(?:mil|k|reais|real)?[.!]?$/i);
       if (onlyAmount) {
@@ -745,18 +751,54 @@ async function prepareCorrection(userId: string, target: Target | null, changes:
   });
 }
 
+/** Conta lançamentos ativos por tipo (gastos, recebimentos e o total). */
+async function countEntries(tx: Tx, userId: string) {
+  const rows = await tx
+    .select({ kind: transactions.kind, c: sql<number>`count(*)::int` })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
+    .groupBy(transactions.kind);
+  const of = (k: string) => rows.find((r) => r.kind === k)?.c ?? 0;
+  return { expense: of("expense"), income: of("income"), all: rows.reduce((s, r) => s + r.c, 0) };
+}
+
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/** "Apagar tudo": sem tipo definido, oferece só gastos, só recebimentos ou tudo; com tipo, pede confirmação. */
+async function proposeDeleteAll(tx: Tx, userId: string, scope: "expense" | "income" | null, now: Date, chosen = false): Promise<Reply> {
+  const n = await countEntries(tx, userId);
+  if (!n.all) return { text: "Você não tem lançamentos para apagar. 🙂" };
+  if (!chosen && scope === null && n.expense > 0 && n.income > 0) {
+    const question = [
+      "🗑️ O que você quer apagar?",
+      "",
+      `1. Só os gastos (${plural(n.expense, "lançamento", "lançamentos")})`,
+      `2. Só os recebimentos (${plural(n.income, "lançamento", "lançamentos")})`,
+      `3. Tudo (${plural(n.all, "lançamento", "lançamentos")})`,
+      "",
+      "Responda com o número ou toque numa opção.",
+    ].join("\n");
+    const p = await openPending(tx, userId, { kind: "choose_delete_scope", question }, now);
+    return {
+      text: question,
+      buttons: [
+        { id: `pa:${p.id}:opt1`, title: "Só gastos" },
+        { id: `pa:${p.id}:opt2`, title: "Só recebimentos" },
+        { id: `pa:${p.id}:opt3`, title: "Tudo" },
+      ],
+    };
+  }
+  const count = scope === "expense" ? n.expense : scope === "income" ? n.income : n.all;
+  if (!count) return { text: scope === "expense" ? "Você não tem gastos para apagar. 🙂" : "Você não tem recebimentos para apagar. 🙂" };
+  const what = scope === "expense" ? `*todos os seus gastos* (${plural(count, "lançamento", "lançamentos")})` : scope === "income" ? `*todos os seus recebimentos* (${plural(count, "lançamento", "lançamentos")})` : `*todos os ${plural(count, "lançamento", "lançamentos")}* da sua conta (gastos e recebimentos)`;
+  const question = `⚠️ Vou apagar ${what}.\n\nSuas contas, categorias, limites e contas fixas continuam cadastrados.\n\nConfirma? Isso não pode ser desfeito por aqui.`;
+  const p = await openPending(tx, userId, { kind: "confirm_delete_all", count, scope, question }, now);
+  return { text: question, buttons: confirmButtons(p.id) };
+}
+
 async function prepareDeletion(userId: string, target: Target | null, today: ISODate, now: Date): Promise<Reply> {
   return withUser(userId, async (tx) => {
-    if (target?.reference === "all") {
-      const [r] = await tx
-        .select({ c: sql<number>`count(*)::int` })
-        .from(transactions)
-        .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
-      if (!r.c) return { text: "Você não tem lançamentos para apagar. 🙂" };
-      const question = `⚠️ Vou apagar *todos os ${r.c} ${r.c === 1 ? "lançamento" : "lançamentos"}* da sua conta (gastos e recebimentos).\n\nSuas contas, categorias, limites e contas fixas continuam cadastrados.\n\nConfirma? Isso não pode ser desfeito por aqui.`;
-      const p = await openPending(tx, userId, { kind: "confirm_delete_all", count: r.c, question }, now);
-      return { text: question, buttons: confirmButtons(p.id) };
-    }
+    if (target?.reference === "all") return proposeDeleteAll(tx, userId, target.kind, now);
     const { candidates, reason } = await resolveTargets(tx, userId, target, today);
     if (!candidates.length) {
       return { text: reason === "duplicate" ? "Não encontrei lançamentos repetidos recentes. Se quiser, me diga o valor do lançamento duplicado." : "Não encontrei esse lançamento. Me diga o valor ou a descrição dele." };
@@ -781,6 +823,15 @@ async function resolvePending(userId: string, pendingId: string, decision: "conf
     if (decision === "cancel") {
       await claimPending(tx, userId, row.id, "canceled", now);
       return { text: "Tudo bem, cancelei. Nada foi alterado. 👍" };
+    }
+
+    if (payload.kind === "choose_delete_scope") {
+      const scopes = ["expense", "income", null] as const;
+      const idx = typeof decision === "number" ? decision - 1 : -1;
+      if (idx < 0 || idx > 2) return { text: "Escolha 1 (só gastos), 2 (só recebimentos) ou 3 (tudo)." };
+      const claimed = await claimPending(tx, userId, row.id, "done", now);
+      if (!claimed) return { text: "Isso já foi processado." };
+      return proposeDeleteAll(tx, userId, scopes[idx], now, true);
     }
 
     if (payload.kind === "choose_target") {
@@ -815,9 +866,15 @@ async function resolvePending(userId: string, pendingId: string, decision: "conf
         return { text: `✅ Lançamento corrigido!\n\n${fmt.describeTx(after)}\n\nOs totais e relatórios já foram atualizados.` };
       }
       if (payload.kind === "confirm_delete_all") {
-        const n = await deleteAllEntries(tx, userId, "agent");
-        await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, userId));
-        return { text: `🗑️ Pronto! Apaguei ${n} ${n === 1 ? "lançamento" : "lançamentos"}.\n\nSua conta está zerada e pronta para começar de novo. É só me mandar o próximo gasto. 🙂` };
+        const scope = payload.scope ?? null;
+        const n = await deleteAllEntries(tx, userId, "agent", scope);
+        if (scope !== "income") await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, userId));
+        const what = scope === "expense" ? plural(n, "gasto", "gastos") : scope === "income" ? plural(n, "recebimento", "recebimentos") : plural(n, "lançamento", "lançamentos");
+        return {
+          text: scope
+            ? `🗑️ Pronto! Apaguei ${what}.\n\nOs totais e relatórios já foram atualizados.`
+            : `🗑️ Pronto! Apaguei ${what}.\n\nSua conta está zerada e pronta para começar de novo. É só me mandar o próximo gasto. 🙂`,
+        };
       }
       if (payload.kind === "confirm_delete") {
         const removed = await deleteEntry(tx, userId, payload.txId, "agent", { wholeInstallmentGroup: payload.wholeGroup, expectedVersion: payload.version, reason: `whatsapp:${msg.messageId}` });
