@@ -10,13 +10,13 @@ import { env } from "@/server/config/env";
 const NAV: NavItem[] = [
   { href: "/app", label: "Visão geral", icon: "home" },
   { href: "/app/lancamentos", label: "Lançamentos", icon: "swap" },
-  { href: "/app/contas", label: "Contas", icon: "card" },
-  { href: "/app/relatorios", label: "Relatórios", icon: "bars" },
+  { href: "/app/whatsapp", label: "WhatsApp", icon: "chat" },
   { href: "/app/limites", label: "Limites", icon: "gauge" },
+  { href: "/app/contas", label: "Contas", icon: "card", mobile: false },
+  { href: "/app/relatorios", label: "Relatórios", icon: "bars", mobile: false },
   { href: "/app/categorias", label: "Categorias", icon: "tag", mobile: false },
-  { href: "/app/whatsapp", label: "WhatsApp", icon: "chat", mobile: false },
   { href: "/app/assinatura", label: "Assinatura", icon: "star", mobile: false },
-  { href: "/app/conta", label: "Conta", icon: "user" },
+  { href: "/app/conta", label: "Conta", icon: "user", mobile: false },
 ];
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
@@ -24,7 +24,6 @@ export default async function AppLayout({ children }: { children: React.ReactNod
   const [ent, linked] = await Promise.all([getEntitlement(user.id), getLinkedNumber(user.id)]);
   const sim = env().SIMULATOR_ENABLED;
   const nav: NavItem[] = sim ? [NAV[0], { href: "/app/simulador", label: "Simulador", icon: "msg", mobile: false }, ...NAV.slice(1)] : NAV;
-  const mobileNav = nav.filter((n) => n.mobile !== false && n.href !== "/app/relatorios");
 
   const banners = (
     <>
@@ -42,7 +41,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
           )}
         </Notice>
       )}
-      {ent.active && !linked && !sim && (
+      {ent.active && !linked && (
         <Notice>
           Falta um passo:{" "}
           <Link href="/app/whatsapp" className="font-semibold text-gain underline-offset-2 hover:underline">
@@ -53,10 +52,10 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       )}
     </>
   );
-  const hasBanner = !ent.active || (ent.active && !linked && !sim);
+  const hasBanner = !ent.active || (ent.active && !linked);
 
   return (
-    <AppShell nav={nav} mobileNav={mobileNav} home="/app" name={user.name} detail={user.email} banners={hasBanner ? banners : undefined}>
+    <AppShell nav={nav} home="/app" name={user.name} detail={user.email} banners={hasBanner ? banners : undefined}>
       {children}
     </AppShell>
   );
