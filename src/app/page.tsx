@@ -1,250 +1,337 @@
 import Link from "next/link";
 import "./landing.css";
 import { listActivePlans } from "@/server/billing/subscriptions";
-import { formatBRL } from "@/server/finance/money";
 import { currentUser } from "@/server/auth/session";
-import { Stage } from "@/components/landing/stage";
 import { Reveal } from "@/components/landing/reveal";
-import { BudgetFragment, CheckoutFragment, CorrectionFragment, LinkCodeFragment, MonthFragment, ReminderFragment } from "@/components/landing/fragments";
+import { LogoBars, Phone } from "@/components/landing/phone";
+import { Dashboard, Icon, LIMITS, Ring } from "@/components/landing/dashboard";
+import { Ways } from "@/components/landing/ways";
+import { Arrow, Pricing } from "@/components/landing/pricing";
+import { THEME_BOOT, ThemeToggle } from "@/components/landing/theme";
 
 export const dynamic = "force-dynamic";
+
+const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 const FAQ = [
   { q: "Preciso instalar algum aplicativo?", a: "Não. Você conversa pelo WhatsApp que já usa. O painel na web é opcional, para ver gráficos, limites e relatórios." },
   { q: "Ele acessa minha conta bancária?", a: "Não. Ele só sabe o que você conta, fala ou encaminha. Nada de senha de banco." },
-  { q: "Entende áudio e comprovante?", a: "Sim. Mande um áudio, o print do Pix, a foto da nota ou o PDF do comprovante. Se não tiver certeza se foi gasto ou recebimento, ele pergunta antes de registrar." },
+  { q: "Entende áudio e comprovante?", a: "Sim. Mande um áudio, o print do Pix, a foto da nota ou o PDF. Se não tiver certeza se foi gasto ou recebimento, ele pergunta antes de registrar." },
   { q: "E se ele entender errado?", a: "Você corrige do seu jeito, como “errei, era 70”. Correções e exclusões pedem sua confirmação antes." },
-  { q: "Quem faz as contas, a inteligência artificial?", a: "Não. A IA só entende o que você escreveu. Totais, saldos e relatórios são calculados direto no banco de dados." },
   { q: "Como funcionam os limites?", a: "Você define quanto quer gastar por categoria ou no mês. Ao chegar em 80% e em 100%, o aviso vem junto da resposta, uma vez só." },
-  { q: "E as contas fixas?", a: "Cadastre aluguel, luz ou internet com o valor e o dia. No dia do vencimento chega um lembrete; responda “paguei” e ele dá baixa sem lançar em dobro." },
-  { q: "Compra no cartão conta duas vezes quando pago a fatura?", a: "Não. A compra entra no dia em que foi feita; o pagamento da fatura é uma movimentação entre contas e não soma de novo." },
+  { q: "E as contas fixas?", a: "Cadastre aluguel, luz ou internet com o valor e o dia. No vencimento chega um lembrete; responda “paguei” e ele dá baixa sem lançar em dobro." },
+  { q: "Quem faz as contas, a inteligência artificial?", a: "Não. A IA só entende o que você escreveu. Totais, saldos e relatórios são calculados direto no banco de dados." },
   { q: "Posso cancelar quando quiser?", a: "Sim, pelo painel. O acesso continua até o fim do período pago, e você pode exportar ou excluir seus dados." },
 ];
 
-const TILE_HEIGHTS = ["lp-tile-1", "lp-tile-2", "lp-tile-3"];
+const STEPS = [
+  { n: 1, icon: "user", title: "Crie sua conta", text: "Cadastro rápido. Pague com Pix ou cartão." },
+  { n: 2, icon: "chat", title: "Conecte seu WhatsApp", text: "Mande o código do painel e pronto." },
+  { n: 3, icon: "bars", title: "Comece a usar", text: "Escreva, fale ou envie comprovantes." },
+] as const;
+
+function StepIcon({ name }: { name: "user" | "chat" | "bars" }) {
+  if (name === "bars") return <Icon name="bars" size={22} />;
+  return (
+    <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+      {name === "user" ? (
+        <>
+          <circle cx="12" cy="8.5" r="3.5" />
+          <path d="M5 20a7 7 0 0 1 14 0" />
+        </>
+      ) : (
+        <path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z" />
+      )}
+    </svg>
+  );
+}
+
+const LIMIT_ICON = { fork: "fork", car: "car", bag: "bag" } as const;
 
 export default async function Home() {
   const [plans, user] = await Promise.all([listActivePlans().catch(() => []), currentUser().catch(() => null)]);
   const panelHref = user ? (user.role === "user" ? "/app" : "/admin") : null;
+  const pricing = plans.slice(0, 3).map((p) => ({
+    id: p.id,
+    slug: p.slug,
+    name: p.name,
+    description: p.description,
+    monthly: p.priceMonthlyCents,
+    yearly: p.priceYearlyCents,
+    features: p.features,
+    messages: p.limits.monthlyMessages,
+  }));
 
   return (
-    <div className="lp">
+    <div className="fz" data-theme="light" suppressHydrationWarning>
+      <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
       <Reveal />
 
-      <div className="lp-split">
-        <div className="lp-read">
-          <header className="lp-nav">
-            <Link href="/" className="lp-word" aria-label="FinanceZap, página inicial">
-              FinanceZap
-            </Link>
-            <nav aria-label="Principal">
-              <a href="#como-comeca">Como começa</a>
-              <a href="#planos">Planos</a>
-              <a href="#perguntas">Perguntas</a>
-              {panelHref ? <Link href={panelHref}>Abrir painel</Link> : <Link href="/entrar">Entrar</Link>}
-            </nav>
-          </header>
-
-          <section className="lp-hero" data-scene="escrever" data-reveal>
-            <h1 data-r>Fale o gasto. A conta fecha.</h1>
-            <p className="lp-lead" data-r>
-              Mande “gastei 50 no posto” no WhatsApp. O FinanceZap registra na categoria certa, avisa quando o limite aperta e lembra as contas do mês.
-            </p>
-            <div className="lp-actions" data-r>
-              <Link href="/cadastro" className="lp-btn">
-                Criar minha conta
+      <header className="fz-nav">
+        <div className="fz-nav-in glass">
+          <Link href="/" className="fz-logo" aria-label="FinanceZap, página inicial">
+            <span className="fz-logo-mark">
+              <LogoBars />
+            </span>
+            FinanceZap
+          </Link>
+          <nav aria-label="Principal">
+            <a href="#como-funciona">Como funciona</a>
+            <a href="#recursos">Recursos</a>
+            <a href="#planos">Planos</a>
+            <a href="#perguntas">Perguntas</a>
+          </nav>
+          <div className="fz-nav-cta">
+            <ThemeToggle />
+            {panelHref ? (
+              <Link href={panelHref} className="fz-pill fz-pill-ghost">
+                Abrir painel
               </Link>
-              <a href="#planos" className="lp-link">
-                Ver planos
+            ) : (
+              <Link href="/entrar" className="fz-pill fz-pill-ghost">
+                Entrar
+              </Link>
+            )}
+            <Link href="/cadastro" className="fz-pill fz-pill-green fz-nav-main">
+              Criar minha conta
+            </Link>
+          </div>
+        </div>
+      </header>
+
+      <main>
+        {/* HERO */}
+        <section className="fz-hero" data-reveal>
+          <div className="fz-hero-copy">
+            <span className="fz-tag glass" data-r>
+              <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+                <path d="M4 20l1.3-3.9A8 8 0 1 1 8 18.8z" />
+              </svg>
+              Seu assistente financeiro no WhatsApp
+            </span>
+            <h1 data-r>
+              Suas finanças,
+              <br />
+              do jeito <em>mais simples.</em>
+            </h1>
+            <p className="fz-lead" data-r>
+              Fale com o FinanceZap pelo WhatsApp. Registre gastos, acompanhe seu dinheiro e receba lembretes, sem planilhas nem aplicativos complicados.
+            </p>
+            <div className="fz-actions" data-r>
+              <Link href="/cadastro" className="fz-pill fz-pill-green fz-pill-lg">
+                Começar agora
+                <Arrow />
+              </Link>
+              <a href="#como-funciona" className="fz-pill fz-pill-ghost fz-pill-lg">
+                <svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">
+                  <path d="M4 2.5v11l9-5.5z" fill="currentColor" />
+                </svg>
+                Ver como funciona
               </a>
             </div>
-            <p className="lp-note" data-r>
-              Sem aplicativo novo e sem planilha. Cancele quando quiser.
-            </p>
-          </section>
-
-          <section className="lp-ways" aria-labelledby="jeitos">
-            <h2 id="jeitos" data-reveal>
-              <span data-r>Escreva, fale ou encaminhe.</span>
-            </h2>
-            <div className="lp-way" data-scene="escrever" data-reveal>
-              <p data-r>
-                <strong>Escrevendo,</strong> do seu jeito: “paguei 120 de luz”, “recebi 1.200 de um cliente”, “comprei um fone de 300 em 3x”. Valores como “mil” e “50,90”, datas como “ontem” e
-                parcelas entram certas.
-              </p>
-            </div>
-            <div className="lp-way" data-scene="falar" data-reveal>
-              <p data-r>
-                <strong>Falando,</strong> quando as mãos estão ocupadas. Mande um áudio dizendo o gasto; ele mostra o que entendeu e registra.
-              </p>
-            </div>
-            <div className="lp-way" data-scene="encaminhar" data-reveal>
-              <p data-r>
-                <strong>Encaminhando</strong> o comprovante do Pix direto do app do banco, a foto da nota ou o PDF. Ele lê valor, data e com quem foi, e pergunta antes se não tiver certeza.
-              </p>
-            </div>
-          </section>
-
-          <section id="como-comeca" className="lp-steps" aria-labelledby="comeca-t">
-            <h2 id="comeca-t" data-reveal>
-              <span data-r>Começa em dois minutos.</span>
-            </h2>
-            <div className="lp-step" data-scene="escrever" data-reveal>
-              <p data-r>
-                <strong>Para começar,</strong> crie sua conta e escolha um plano. Paga com Pix ou cartão, e o acesso é liberado assim que o pagamento é confirmado.
-              </p>
-              <div data-r>
-                <CheckoutFragment />
-              </div>
-            </div>
-            <div className="lp-step" data-scene="vincular" data-reveal>
-              <p data-r>
-                <strong>Logo depois,</strong> o painel mostra um código. Você manda “Vincular” e o código para o número do FinanceZap, e o seu WhatsApp fica ligado à sua conta.
-              </p>
-              <div data-r>
-                <LinkCodeFragment />
-              </div>
-            </div>
-            <div className="lp-step" data-scene="escrever" data-reveal>
-              <p data-r>
-                <strong>A partir daí,</strong> é conversar. No fim do mês, o painel mostra para onde foi cada real, comparado com o mês anterior.
-              </p>
-              <div data-r>
-                <MonthFragment />
-              </div>
-            </div>
-          </section>
-        </div>
-
-        <aside className="lp-stage-col" aria-label="Demonstração: conversa com o FinanceZap no WhatsApp">
-          <Stage />
-        </aside>
-      </div>
-
-      <section className="lp-features" aria-labelledby="resto">
-        <div className="lp-features-grid">
-          <h2 id="resto" className="lp-pinned">
-            Ele cuida do resto.
-          </h2>
-          <div className="lp-blocks">
-            <article className="lp-block" data-reveal>
-              <h3 data-r>Limites que avisam</h3>
-              <div className="lp-block-row">
-                <div data-r>
-                  <BudgetFragment />
-                </div>
-                <ul data-r>
-                  <li>Por categoria ou para o mês inteiro</li>
-                  <li>“limite de 800 para mercado” e pronto</li>
-                  <li>Aviso em 80% e em 100%, uma vez só</li>
-                  <li>Barra de progresso no painel</li>
-                </ul>
-              </div>
-            </article>
-            <article className="lp-block is-flip" data-reveal>
-              <h3 data-r>Contas fixas no dia certo</h3>
-              <div className="lp-block-row">
-                <div data-r>
-                  <ReminderFragment />
-                </div>
-                <ul data-r>
-                  <li>Aluguel, luz, internet, salário</li>
-                  <li>“meu aluguel é 1.200 todo dia 10”</li>
-                  <li>Lembrete no dia do vencimento</li>
-                  <li>“paguei” dá baixa, sem lançar em dobro</li>
-                </ul>
-              </div>
-            </article>
-            <article className="lp-block" data-reveal>
-              <h3 data-r>Corrige do seu jeito</h3>
-              <div className="lp-block-row">
-                <div data-r>
-                  <CorrectionFragment />
-                </div>
-                <ul data-r>
-                  <li>“errei, era 70” corrige o último</li>
-                  <li>“apaga o último gasto” exclui</li>
-                  <li>Pede confirmação antes de mudar</li>
-                  <li>Todo antes e depois fica no histórico</li>
-                </ul>
-              </div>
-            </article>
-
+            <ul className="fz-trust" data-r>
+              <li>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M13 3 5 13.5h6L10 21l8-10.5h-6z" />
+                </svg>
+                Responde em segundos
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" aria-hidden="true">
+                  <path d="M12 3 5 6v5.5c0 4.3 3 8 7 9.5 4-1.5 7-5.2 7-9.5V6z" />
+                  <path d="m9 12 2 2 4-4" strokeLinecap="round" />
+                </svg>
+                Dados protegidos
+              </li>
+              <li>
+                <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true">
+                  <rect x="7" y="3" width="10" height="18" rx="2.5" />
+                  <path d="M11 17.5h2" strokeLinecap="round" />
+                </svg>
+                Funciona no WhatsApp
+              </li>
+            </ul>
           </div>
-        </div>
-      </section>
 
-      <section className="lp-trust" aria-labelledby="dados" data-reveal>
-        <h2 id="dados" data-r>
-          Seus dados, só seus.
-        </h2>
-        <p data-r>
-          Cada cliente só enxerga os próprios lançamentos, isolados no banco de dados. Usamos a integração oficial da Meta para o WhatsApp. O texto das mensagens é descartado depois de
-          processado e ficam só os lançamentos. Pagamentos pelo Asaas, sem guardar dado de cartão. Exporte ou exclua tudo pelo painel, quando quiser.
-        </p>
-      </section>
+          <div className="fz-hero-visual" data-r>
+            <div className="fz-glow" aria-hidden="true" />
+            <Phone interactive />
+            <div className="fz-float fz-f1 glass" aria-hidden="true">
+              <span className="fz-float-icon">
+                <svg viewBox="0 0 16 16" width="16" height="16">
+                  <path d="m3.5 8.5 3 3 6-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </span>
+              <span>
+                <small>Despesa registrada</small>
+                <strong>R$ 50,00</strong>
+              </span>
+            </div>
+            <div className="fz-float fz-f2 glass" aria-hidden="true">
+              <span className="fz-ring-wrap">
+                <Ring pct={86} size={46} stroke={5} color="#f59e0b" />
+              </span>
+              <span>
+                <small>Limite de Mercado</small>
+                <strong>86%</strong>
+              </span>
+            </div>
+            <div className="fz-float fz-f3 glass" aria-hidden="true">
+              <span className="fz-float-icon is-amber">
+                <Icon name="calendar" size={16} />
+              </span>
+              <span>
+                <small>Vence hoje</small>
+                <strong>Aluguel</strong>
+              </span>
+            </div>
+            <div className="fz-float fz-f4 glass" aria-hidden="true">
+              <small>Gastos do mês</small>
+              <strong className="fz-float-big">R$ 2.031,55</strong>
+              <span className="fz-spark">
+                {[30, 44, 38, 56, 50, 68, 62].map((h, i) => (
+                  <i key={i} style={{ height: `${h}%` }} />
+                ))}
+              </span>
+            </div>
+          </div>
+        </section>
 
-      <section id="planos" className="lp-pricing" aria-labelledby="planos-t">
-        <h2 id="planos-t" data-reveal>
-          <span data-r>Escolha o tamanho.</span>
-        </h2>
-        {plans.length === 0 ? (
-          <p className="lp-lead">Os planos estão sendo configurados. Crie sua conta para ser avisado quando as assinaturas abrirem.</p>
-        ) : (
-          <div className="lp-tiles" data-reveal>
-            {plans.slice(0, 3).map((p, i) => (
-              <article key={p.id} className={`lp-tile ${TILE_HEIGHTS[i] ?? "lp-tile-3"}`} data-r>
-                <div className="lp-tile-body">
-                  <h3>{p.name}</h3>
-                  <p className="lp-price">
-                    {formatBRL(p.priceMonthlyCents)}
-                    <span>/mês</span>
-                  </p>
-                  <p className="lp-year">ou {formatBRL(p.priceYearlyCents)} por ano</p>
-                  <ul>
-                    {p.features.map((f) => (
-                      <li key={f}>{f}</li>
-                    ))}
-                    <li>Até {p.limits.monthlyMessages.toLocaleString("pt-BR")} mensagens por mês</li>
-                  </ul>
-                </div>
-                <Link href={`/cadastro?plano=${p.slug}`} className="lp-tile-cta">
-                  Assinar o {p.name}
-                </Link>
-              </article>
+        {/* COMO FUNCIONA */}
+        <section id="como-funciona" className="fz-section fz-how" data-reveal>
+          <header className="fz-head" data-r>
+            <h2>Como funciona</h2>
+            <p>Comece a usar em menos de 2 minutos.</p>
+          </header>
+          <ol className="fz-steps">
+            {STEPS.map((s) => (
+              <li key={s.n} className="fz-step glass" data-r>
+                <span className="fz-step-n">{s.n}</span>
+                <span className="fz-step-icon">
+                  <StepIcon name={s.icon} />
+                </span>
+                <span>
+                  <strong>{s.title}</strong>
+                  <small>{s.text}</small>
+                </span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        {/* PAINEL */}
+        <section id="recursos" className="fz-section fz-dash-sec" data-reveal>
+          <header className="fz-head" data-r>
+            <h2>Tudo o que você conta, organizado.</h2>
+            <p>Cada mensagem vira um lançamento no seu painel, com gráficos, limites e histórico.</p>
+          </header>
+          <div className="fz-dash-wrap" data-r>
+            <Dashboard />
+          </div>
+        </section>
+
+        {/* JEITOS + LIMITES */}
+        <section className="fz-section fz-duo" data-reveal>
+          <div className="fz-duo-col" data-r>
+            <header className="fz-head fz-head-left">
+              <h2>Funciona do seu jeito.</h2>
+              <p>Registre seus gastos da forma mais prática para você.</p>
+            </header>
+            <Ways />
+          </div>
+          <div className="fz-duo-col" data-r>
+            <header className="fz-head fz-head-left">
+              <h2>Limites que avisam.</h2>
+              <p>Defina quanto quer gastar por categoria. O aviso chega em 80% e em 100%.</p>
+            </header>
+            <ul className="fz-limits">
+              {LIMITS.map((l) => {
+                const pct = Math.floor((l.spent * 100) / l.limit);
+                return (
+                  <li key={l.name} className="fz-limit glass">
+                    <span className="fz-ring-wrap fz-ring-lg">
+                      <Ring pct={pct} size={76} stroke={6} color={pct >= 80 ? "#f59e0b" : "var(--green)"} />
+                      <span className="fz-ring-ic">
+                        <Icon name={LIMIT_ICON[l.icon]} size={20} />
+                      </span>
+                    </span>
+                    <span className="fz-limit-name">{l.name}</span>
+                    <strong>{pct}%</strong>
+                    <small>
+                      {brl(l.spent)} de {brl(l.limit)}
+                    </small>
+                  </li>
+                );
+              })}
+            </ul>
+            <div className="fz-remind glass">
+              <span className="fz-float-icon is-amber">
+                <Icon name="calendar" size={18} />
+              </span>
+              <span>
+                <strong>Contas fixas no dia certo</strong>
+                <small>Aluguel, luz e internet com lembrete no vencimento. Responda “paguei” e ele dá baixa.</small>
+              </span>
+            </div>
+          </div>
+        </section>
+
+        {/* PLANOS */}
+        <section id="planos" className="fz-section fz-pricing" data-reveal>
+          <header className="fz-head" data-r>
+            <h2>Planos para o seu momento.</h2>
+            <p>Escolha o plano ideal e comece hoje mesmo. Cancele quando quiser.</p>
+          </header>
+          {pricing.length ? (
+            <Pricing plans={pricing} />
+          ) : (
+            <p className="fz-lead fz-center">Os planos estão sendo configurados. Crie sua conta para ser avisado quando as assinaturas abrirem.</p>
+          )}
+        </section>
+
+        {/* PERGUNTAS */}
+        <section id="perguntas" className="fz-section fz-faq" data-reveal>
+          <header className="fz-head" data-r>
+            <h2>Perguntas frequentes</h2>
+          </header>
+          <div className="fz-faq-list" data-r>
+            {FAQ.map((f) => (
+              <details key={f.q} className="fz-q glass">
+                <summary>
+                  {f.q}
+                  <span className="fz-plus" aria-hidden="true" />
+                </summary>
+                <p>{f.a}</p>
+              </details>
             ))}
           </div>
-        )}
-      </section>
+        </section>
 
-      <section id="perguntas" className="lp-faq" aria-labelledby="faq-t" data-reveal>
-        <h2 id="faq-t" data-r>
-          Perguntas, respondidas.
-        </h2>
-        <div className="lp-faq-text" data-r>
-          {FAQ.map((f) => (
-            <p key={f.q}>
-              <strong>{f.q}</strong> {f.a}
-            </p>
-          ))}
-        </div>
-      </section>
+        {/* CHAMADA FINAL */}
+        <section className="fz-final-wrap" data-reveal>
+          <div className="fz-final" data-r>
+            <span className="fz-final-mark" aria-hidden="true">
+              <LogoBars size={30} />
+            </span>
+            <h2>
+              Comece a cuidar melhor <em>do seu dinheiro.</em>
+            </h2>
+            <p>Crie sua conta, conecte seu WhatsApp e registre seu primeiro gasto em poucos minutos.</p>
+            <Link href="/cadastro" className="fz-pill fz-pill-green fz-pill-lg">
+              Começar agora
+              <Arrow />
+            </Link>
+          </div>
+        </section>
+      </main>
 
-      <section className="lp-cta" data-reveal>
-        <h2 data-r>Comece hoje.</h2>
-        <p data-r>Crie a conta, vincule o WhatsApp e escreva o próximo gasto. Leva dois minutos.</p>
-        <div className="lp-actions" data-r>
-          <Link href="/cadastro" className="lp-btn">
-            Criar minha conta
-          </Link>
-          <Link href="/entrar" className="lp-link">
-            Já tenho conta
-          </Link>
-        </div>
-      </section>
-
-      <footer className="lp-foot">
-        <span>Assistente financeiro no WhatsApp</span>
+      <footer className="fz-foot">
+        <span className="fz-logo">
+          <span className="fz-logo-mark">
+            <LogoBars />
+          </span>
+          FinanceZap
+        </span>
         <nav aria-label="Rodapé">
           <Link href="/termos">Termos de uso</Link>
           <Link href="/privacidade">Privacidade</Link>
