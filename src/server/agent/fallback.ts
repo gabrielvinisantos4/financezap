@@ -266,16 +266,20 @@ function budgetCategory(n: string): string | null {
 }
 
 function parseFixed(original: string, n: string): Interpretation | null {
-  const mentions = /\b(conta fixa|contas fixas|gasto fixo|gastos fixos|todo mes|todos os meses|mensalmente|todo dia \d{1,2}|recorrente)\b/.test(n);
+  const mentions = /\b(conta fixa|contas fixas|gasto fixo|gastos fixos|despesa fixa|despesas fixas|receita fixa|receitas fixas|entrada fixa|entradas fixas|ganho fixo|ganhos fixos|todo mes|todos os meses|mensalmente|todo dia \d{1,2}|recorrente)\b/.test(n);
   if (!mentions) return null;
-  const kind: "income" | "expense" = /\b(recebo|ganho|salario|entra)\b/.test(n) ? "income" : "expense";
+  const kind: "income" | "expense" = /\b(recebo|ganho|ganhos|salario|entra|receita|receitas|entrada|entradas)\b/.test(n) ? "income" : "expense";
   const fixed = (action: "set" | "remove" | "list", extra: Partial<{ description: string | null; amount: number | null; day: number | null; category: string | null }> = {}): Interpretation =>
     emptyInterpretation("fixed", { fixed: { action, kind, description: null, amount: null, day: null, category: null, ...extra }, confidence: 0.75 });
   if (/^(quais|qual|lista|listar|mostra|me mostra|minhas?)\b/.test(n) || n.endsWith("?")) return fixed("list");
   const category = guessCategorySlug(original, kind);
   const label = DEFAULT_EXPENSE_CATEGORIES.concat().find((c) => c.slug === category);
   const word = n.match(/\b(aluguel|condominio|internet|luz|energia|agua|gas|celular|telefone|academia|escola|faculdade|plano de saude|netflix|spotify|financiamento|consorcio|salario|mensalidade|seguro)\b/)?.[1] ?? null;
-  const description = word ? capitalize(word) : label && label.slug !== "outros" ? label.name : null;
+  // "800 de social media todo dia 10" → "Social media"
+  const named = n
+    .match(/\d[\d.,]*\s*(?:mil\s+)?(?:reais\s+)?(?:de|do|da|com)\s+(?:o\s+|a\s+|um\s+|uma\s+)?(?:cliente\s+(?:de\s+)?)?([a-z][a-z ]{2,30}?)(?=\s+(?:todo|toda|todos|no dia|dia|por mes|mensal|,|$)|$)/)?.[1]
+    ?.trim() ?? n.match(/\bcliente (?:de|do|da) ([a-z][a-z ]{2,30}?)(?=\s+(?:no dia|dia|todo|toda|por mes)|$)/)?.[1]?.trim();
+  const description = word ? capitalize(word) : named && !/^(mes|todo|cada)\b/.test(named) ? capitalize(named) : label && label.slug !== "outros" ? label.name : null;
   if (/\b(tira|tirar|remove|remover|apaga|apagar|exclui|excluir|cancela|cancelar|para de|parar)\b/.test(n)) return fixed("remove", { description, category });
   const day = Number(n.match(/\bdia (\d{1,2})\b/)?.[1] ?? NaN);
   const textNoDay = original.replace(/\bdia\s+\d{1,2}\b/gi, " ");

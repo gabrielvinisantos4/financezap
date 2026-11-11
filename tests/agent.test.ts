@@ -309,6 +309,9 @@ describe("contas fixas pelo WhatsApp", () => {
     expect(i("quais são minhas contas fixas?")).toMatchObject({ intent: "fixed", fixed: { action: "list" } });
     expect(i("tira o aluguel das contas fixas")).toMatchObject({ intent: "fixed", fixed: { action: "remove", description: "Aluguel" } });
     expect(i("recebo 3 mil de salário todo dia 5")).toMatchObject({ intent: "fixed", fixed: { action: "set", kind: "income", amount: 3000, day: 5 } });
+    expect(i("recebo 800 de social media todo dia 10")).toMatchObject({ intent: "fixed", fixed: { action: "set", kind: "income", description: "Social media", amount: 800, day: 10 } });
+    expect(i("tenho uma receita fixa de 800 de social media dia 5")).toMatchObject({ intent: "fixed", fixed: { action: "set", kind: "income", description: "Social media", amount: 800, day: 5 } });
+    expect(i("minhas receitas fixas")).toMatchObject({ intent: "fixed", fixed: { action: "list", kind: "income" } });
   });
 
   it("cadastra, gera a conta a pagar quando vence em até 7 dias e 'paguei o aluguel' dá baixa sem duplicar", async () => {
@@ -333,6 +336,23 @@ describe("contas fixas pelo WhatsApp", () => {
     const rm = await send(u.id, "tira o aluguel das contas fixas");
     expect(rm.reply.text).toContain("encerrada");
     expect((await send(u.id, "minhas contas fixas")).reply.text).toContain("ainda não tem contas fixas");
+  });
+
+  it("receita fixa: cadastra o social media, 'recebi o social media' dá baixa sem lançar em dobro", async () => {
+    const u = await makeUser();
+    // hoje é 24/10: cai dia 28 → já aparece como valor a receber
+    const r = await send(u.id, "recebo 800 de social media todo dia 28");
+    expect(r.reply.text).toContain("Entrada fixa cadastrada");
+    expect(r.reply.text).toContain("Social media");
+    let list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ kind: "income", status: "pending", amountCents: 80000 });
+
+    const got = await send(u.id, "recebi o social media");
+    expect(got.reply.text).toContain("Entrada fixa recebida");
+    list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list).toHaveLength(1);
+    expect(list[0]).toMatchObject({ kind: "income", status: "paid", amountCents: 80000 });
   });
 
   it("vencimento longe: não gera ainda; pedir sem valor pergunta o que falta", async () => {
