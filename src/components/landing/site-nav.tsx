@@ -40,12 +40,15 @@ export function SiteNav({ links, panelHref, cta }: { links: NavLink[]; panelHref
         </nav>
         <div className="fz-nav-cta">
           <ThemeToggle className="fz-theme fz-nav-theme" />
-          <Link href={login.href} className="fz-pill fz-pill-ghost fz-nav-login">
+          <Link href={login.href} className={`fz-pill ${panelHref ? "fz-pill-green" : "fz-pill-ghost"} fz-nav-login`}>
             {login.label}
           </Link>
-          <Link href={cta.href} className="fz-pill fz-pill-green fz-nav-main">
-            {cta.label}
-          </Link>
+          {/* Logado: o botão principal vira "Abrir painel" (não faz sentido criar outra conta) */}
+          {!panelHref && (
+            <Link href={cta.href} className="fz-pill fz-pill-green fz-nav-main">
+              {cta.label}
+            </Link>
+          )}
           <button
             type="button"
             className="fz-burger"
@@ -76,9 +79,11 @@ export function SiteNav({ links, panelHref, cta }: { links: NavLink[]; panelHref
             <Link href={login.href} className="fz-pill fz-pill-ghost" onClick={() => setOpen(false)}>
               {login.label}
             </Link>
-            <Link href={cta.href} className="fz-pill fz-pill-green" onClick={() => setOpen(false)}>
-              {cta.label}
-            </Link>
+            {!panelHref && (
+              <Link href={cta.href} className="fz-pill fz-pill-green" onClick={() => setOpen(false)}>
+                {cta.label}
+              </Link>
+            )}
           </div>
         </>
       )}
