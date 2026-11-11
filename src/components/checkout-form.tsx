@@ -24,7 +24,7 @@ export function CheckoutForm({ plans, initial }: { plans: P[]; initial?: string 
       <fieldset className="grid w-fit grid-cols-2 gap-1 rounded-full bg-paper p-1">
         <legend className="sr-only">Cobrança</legend>
         {(["monthly", "yearly"] as const).map((c) => (
-          <label key={c} className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold ${cycle === c ? "bg-surface text-ink shadow-sm" : "text-ink-soft"}`}>
+          <label key={c} className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold ${cycle === c ? "lg-btn text-ink" : "text-ink-soft"}`}>
             <input type="radio" name="cycle" value={c} checked={cycle === c} onChange={() => setCycle(c)} className="sr-only" />
             {c === "monthly" ? "Mensal" : "Anual"}
           </label>

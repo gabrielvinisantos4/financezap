@@ -21,7 +21,7 @@ export function AppNav({ items, variant }: { items: NavItem[]; variant: "desktop
                   href={i.href}
                   aria-current={on ? "page" : undefined}
                   className={`flex h-11 items-center gap-3 rounded-[14px] px-3.5 text-[0.93rem] font-medium transition-colors ${
-                    on ? "bg-gain-soft font-semibold text-gain" : "text-ink-soft hover:bg-surface hover:text-ink"
+                    on ? "lg-tint font-semibold text-gain" : "lg-ghost text-ink-soft hover:text-ink"
                   }`}
                 >
                   <Icon name={i.icon} />
@@ -45,7 +45,7 @@ export function AppNav({ items, variant }: { items: NavItem[]; variant: "desktop
                 <Link
                   href={i.href}
                   aria-current={on ? "page" : undefined}
-                  className={`flex flex-col items-center gap-0.5 rounded-[18px] px-1 py-1.5 text-[0.68rem] font-semibold transition-colors ${on ? "bg-gain-soft text-gain" : "text-ink-faint"}`}
+                  className={`flex flex-col items-center gap-0.5 rounded-[18px] px-1 py-1.5 text-[0.68rem] font-semibold transition-colors ${on ? "lg-tint text-gain" : "text-ink-faint"}`}
                 >
                   <Icon name={i.icon} size={20} />
                   {i.label}

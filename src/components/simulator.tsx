@@ -99,7 +99,7 @@ export function Simulator() {
 
       <div className="flex gap-2 overflow-x-auto px-3 pb-2">
         {SUGGESTIONS.map((s) => (
-          <button key={s} type="button" disabled={pending} onClick={() => send({ text: s }, s)} className="shrink-0 rounded-full border border-line bg-surface px-3 py-1.5 text-sm hover:bg-paper disabled:opacity-50">
+          <button key={s} type="button" disabled={pending} onClick={() => send({ text: s }, s)} className="lg-btn shrink-0 rounded-full px-3 py-1.5 text-sm disabled:opacity-50">
             {s}
           </button>
         ))}

@@ -51,9 +51,9 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
     <>
       <PageHeader title="Lançamentos" description="Tudo o que você registrou, pelo WhatsApp ou pelo painel.">
         <div className="flex items-center gap-1 rounded-full border border-line bg-surface p-1 text-sm">
-          <Link href={qs({ mes: prevMonth, pagina: undefined })} className="rounded-full px-3 py-1.5" aria-label="Mês anterior">‹</Link>
+          <Link href={qs({ mes: prevMonth, pagina: undefined })} className="lg-ghost rounded-full px-3 py-1.5" aria-label="Mês anterior">‹</Link>
           <span className="wide px-2 capitalize">{monthLabel(period.from)}</span>
-          <Link href={qs({ mes: nextMonth, pagina: undefined })} className="rounded-full px-3 py-1.5" aria-label="Próximo mês">›</Link>
+          <Link href={qs({ mes: nextMonth, pagina: undefined })} className="lg-ghost rounded-full px-3 py-1.5" aria-label="Próximo mês">›</Link>
         </div>
       </PageHeader>
 

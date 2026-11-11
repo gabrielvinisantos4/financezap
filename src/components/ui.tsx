@@ -61,7 +61,7 @@ export function Panel({ title, children, className = "", action }: { title?: str
 
 export function PanelLink({ href, children }: { href: string; children: React.ReactNode }) {
   return (
-    <Link href={href} className="inline-flex h-8 items-center rounded-full bg-paper px-3.5 text-sm font-semibold text-ink-soft transition-colors hover:bg-gain-soft hover:text-gain">
+    <Link href={href} className="lg-btn inline-flex h-8 items-center rounded-full px-3.5 text-sm font-semibold text-ink-soft hover:text-gain">
       {children}
     </Link>
   );

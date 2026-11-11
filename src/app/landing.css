@@ -169,9 +169,6 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     var(--shadow-lg);
 }
-:root[data-theme="dark"] .fz .fz-pill-green {
-  color: #04140a !important;
-}
 :root[data-theme="dark"] .fz .ph-icons i,
 :root[data-theme="dark"] .fz .ph-status {
   color: var(--wa-text);
@@ -341,7 +338,10 @@
     color 160ms ease;
 }
 .fz-nav nav a:hover {
-  background: var(--hover);
+  background: var(--lg-clear);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim),
+    inset 0 0 0 1px var(--lg-hairline);
   color: var(--ink);
 }
 .fz-nav-cta {

@@ -43,7 +43,7 @@ export function AppShell({
             <p className="truncate text-xs text-ink-faint">{detail}</p>
           </div>
           <form action={logoutAction}>
-            <button className="grid h-9 w-9 place-items-center rounded-full text-ink-faint transition-colors hover:bg-paper hover:text-loss" aria-label="Sair" title="Sair">
+            <button className="lg-ghost grid h-9 w-9 place-items-center rounded-full text-ink-faint hover:text-loss" aria-label="Sair" title="Sair">
               <Icon name="logout" size={18} />
             </button>
           </form>

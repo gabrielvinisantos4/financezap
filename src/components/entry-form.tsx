@@ -33,7 +33,7 @@ export function EntryForm({ categories, accounts, defaults }: { categories: Opt[
       )}
       <fieldset className="grid grid-cols-2 gap-1 rounded-full bg-paper p-1" aria-label="Tipo">
         {(["expense", "income"] as const).map((k) => (
-          <label key={k} className={`cursor-pointer rounded-full py-2 text-center text-sm font-semibold ${kind === k ? (k === "expense" ? "bg-surface text-loss shadow-sm" : "bg-surface text-gain shadow-sm") : "text-ink-soft"}`}>
+          <label key={k} className={`cursor-pointer rounded-full py-2 text-center text-sm font-semibold ${kind === k ? (k === "expense" ? "lg-btn text-loss" : "lg-btn text-gain") : "text-ink-soft"}`}>
             <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} className="sr-only" />
             {k === "expense" ? "Despesa" : "Receita"}
           </label>

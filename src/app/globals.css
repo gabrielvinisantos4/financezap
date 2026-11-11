@@ -226,12 +226,6 @@ select.input {
 .btn-primary:hover {
   background: #12843d;
 }
-:root[data-theme="dark"] .btn-primary {
-  color: #04140a;
-}
-:root[data-theme="dark"] .btn-primary:hover {
-  background: #4ade80;
-}
 .btn-coin {
   background: var(--color-coin);
   color: #1f1300;
@@ -298,4 +292,207 @@ select.input {
   color: var(--color-ink);
   transform: rotate(-14deg);
 }
+}
+
+/* =====================================================================
+ * Botões Liquid Glass
+ * Vidro translúcido com desfoque e saturação do fundo, aro de luz fino,
+ * brilho especular no topo e luz interna na base. Só a pele dos botões:
+ * tamanhos, textos e posições continuam os mesmos.
+ * ===================================================================== */
+:root {
+  --lg-blur: blur(14px) saturate(1.8);
+  /* verde (principal) */
+  --lg-green-top: rgba(38, 194, 96, 0.86);
+  --lg-green-bottom: rgba(19, 133, 62, 0.92);
+  --lg-green-glow: rgba(22, 163, 74, 0.5);
+  /* claro (secundário) */
+  --lg-clear: rgba(255, 255, 255, 0.4);
+  --lg-clear-hover: rgba(255, 255, 255, 0.6);
+  --lg-edge-shade: rgba(15, 31, 24, 0.07);
+  --lg-rim: rgba(255, 255, 255, 1);
+  --lg-hairline: rgba(15, 31, 24, 0.08);
+  --lg-drop: rgba(14, 23, 20, 0.16);
+  --lg-sheen: rgba(255, 255, 255, 0.55);
+  --lg-ink: var(--color-ink, #0e1714);
+  /* tinta verde suave (navegação ativa) */
+  --lg-tint: rgba(34, 197, 94, 0.14);
+}
+:root[data-theme="dark"] {
+  --lg-green-top: rgba(46, 204, 106, 0.78);
+  --lg-green-bottom: rgba(21, 128, 61, 0.86);
+  --lg-green-glow: rgba(34, 197, 94, 0.42);
+  --lg-clear: rgba(255, 255, 255, 0.07);
+  --lg-clear-hover: rgba(255, 255, 255, 0.11);
+  --lg-rim: rgba(255, 255, 255, 0.16);
+  --lg-hairline: rgba(255, 255, 255, 0.06);
+  --lg-drop: rgba(0, 0, 0, 0.5);
+  --lg-sheen: rgba(255, 255, 255, 0.16);
+  --lg-edge-shade: rgba(0, 0, 0, 0.35);
+  --lg-tint: rgba(34, 197, 94, 0.16);
+}
+
+/* Mecânica comum: camada de brilho (::before) e luz interna (::after) */
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-tint, .fz-billing button.is-on, .ph-composer button) {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  -webkit-backdrop-filter: var(--lg-blur);
+  backdrop-filter: var(--lg-blur);
+  transition:
+    transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
+    box-shadow 260ms ease,
+    background-color 260ms ease,
+    filter 260ms ease;
+}
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-tint, .fz-billing button.is-on, .ph-composer button)::before {
+  /* reflexo especular: um arco de luz no topo, que some no meio */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(120% 70% at 50% -18%, var(--lg-sheen), transparent 58%);
+  opacity: 0.9;
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-tint, .fz-billing button.is-on, .ph-composer button)::after {
+  /* luz interna refletida na base do vidro */
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: radial-gradient(90% 60% at 50% 125%, rgba(255, 255, 255, 0.22), transparent 62%);
+  pointer-events: none;
+  transition: opacity 260ms ease;
+}
+
+/* ---------- Principal: verde visto através do vidro ---------- */
+html :is(.btn-primary, .fz-pill-green, .ph-composer button) {
+  color: #fff !important;
+  background: linear-gradient(180deg, var(--lg-green-top), var(--lg-green-bottom));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.5),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.2),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.12),
+    0 1px 2px rgba(10, 60, 30, 0.12),
+    0 10px 26px -14px var(--lg-green-glow);
+  text-shadow: 0 1px 1px rgba(5, 60, 25, 0.25);
+}
+html :is(.btn-primary, .fz-pill-green, .ph-composer button):hover {
+  background: linear-gradient(180deg, var(--lg-green-top), var(--lg-green-bottom));
+  filter: brightness(1.05) saturate(1.05);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.62),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.26),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.16),
+    0 1px 2px rgba(10, 60, 30, 0.12),
+    0 14px 32px -14px var(--lg-green-glow);
+}
+
+/* ---------- Secundário: vidro claro ---------- */
+html :is(.btn-ghost, .fz-pill-ghost, .fz-pill-soft, .theme-btn, .fz-theme) {
+  color: var(--lg-ink);
+}
+html :is(.btn-ghost, .fz-pill-ghost, .fz-pill-soft, .theme-btn, .fz-theme, .lg-btn, .fz-billing button.is-on) {
+  background: var(--lg-clear);
+  box-shadow:
+    inset 0 1.5px 1px -0.5px var(--lg-rim),
+    inset 0 0 0 1px var(--lg-hairline),
+    inset 0 -4px 10px -4px var(--lg-edge-shade),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.35),
+    0 1px 2px rgba(14, 23, 20, 0.05),
+    0 10px 24px -14px var(--lg-drop);
+}
+html :is(.btn-ghost, .fz-pill-ghost, .fz-pill-soft, .theme-btn, .fz-theme, .lg-btn):hover {
+  background: var(--lg-clear-hover);
+  box-shadow:
+    inset 0 1.5px 1px -0.5px var(--lg-rim),
+    inset 0 0 0 1px var(--lg-hairline),
+    inset 0 -4px 10px -4px var(--lg-edge-shade),
+    inset 0 -1px 0 rgba(255, 255, 255, 0.45),
+    0 1px 2px rgba(14, 23, 20, 0.05),
+    0 14px 30px -14px var(--lg-drop);
+}
+/* o botão de tema não gira mais: a luz muda, a forma fica */
+html :is(.theme-btn, .fz-theme):hover {
+  transform: translateY(-1px);
+}
+
+/* ---------- Âmbar e vermelho no mesmo vidro ---------- */
+html .btn-coin {
+  color: #2a1a00;
+  background: linear-gradient(180deg, rgba(251, 191, 36, 0.85), rgba(217, 119, 6, 0.85));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.22),
+    0 10px 24px -14px rgba(217, 119, 6, 0.55);
+}
+html .btn-danger {
+  color: #fff;
+  background: linear-gradient(180deg, rgba(239, 68, 68, 0.84), rgba(185, 28, 28, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.45),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 10px 24px -14px rgba(185, 28, 28, 0.55);
+}
+
+/* ---------- Navegação ativa: vidro com tinta verde ---------- */
+html .lg-tint {
+  background: var(--lg-tint);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim),
+    inset 0 0 0 1px rgba(34, 197, 94, 0.18),
+    0 6px 18px -12px rgba(22, 163, 74, 0.45);
+}
+
+/* ---------- Botões pequenos só de ícone: vidro aparece no toque ---------- */
+html .lg-ghost {
+  transition:
+    background-color 200ms ease,
+    box-shadow 200ms ease,
+    transform 180ms ease;
+}
+html .lg-ghost:hover {
+  background: var(--lg-clear);
+  -webkit-backdrop-filter: var(--lg-blur);
+  backdrop-filter: var(--lg-blur);
+  box-shadow:
+    inset 0 1px 0 var(--lg-rim),
+    inset 0 0 0 1px var(--lg-hairline);
+}
+
+/* ---------- Pressionado: o vidro afunda, o brilho recua ---------- */
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-ghost, .ph-composer button):active {
+  transform: scale(0.97);
+  filter: none;
+}
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .ph-composer button):active::before {
+  opacity: 0.45;
+}
+html :is(.btn-primary, .fz-pill-green, .ph-composer button):active {
+  box-shadow:
+    inset 0 2px 6px rgba(5, 60, 25, 0.3),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16),
+    0 4px 12px -8px var(--lg-green-glow);
+}
+html :is(.btn-ghost, .fz-pill-ghost, .fz-pill-soft, .theme-btn, .fz-theme, .lg-btn):active {
+  box-shadow:
+    inset 0 2px 5px var(--lg-drop),
+    inset 0 0 0 1px var(--lg-hairline);
+}
+
+/* Foco visível continua claro sobre o vidro */
+html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-ghost):focus-visible {
+  outline: 2px solid var(--color-gain, #16a34a);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  html :is(.btn, .fz-pill, .theme-btn, .fz-theme, .lg-btn, .lg-tint, .ph-composer button) {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }
