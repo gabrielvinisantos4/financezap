@@ -1,4 +1,5 @@
 import { appContext } from "@/server/app-context";
+import { PasswordInput } from "@/components/password-input";
 import { PageHeader, Panel } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/forms";
 import { deleteAccountAction, updateProfileAction } from "@/app/actions/app";
@@ -53,7 +54,7 @@ export default async function AccountPage() {
               </label>
               <label className="field">
                 <span>Sua senha</span>
-                <input className="input" type="password" name="password" autoComplete="current-password" required />
+                <PasswordInput className="input" name="password" autoComplete="current-password" required />
               </label>
               <Submit className="btn btn-danger w-fit" pendingText="Excluindo…">Excluir minha conta</Submit>
             </ActionForm>

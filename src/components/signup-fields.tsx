@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { useState } from "react";
+import { PasswordInput } from "./password-input";
 
 /** Campos de cadastro com confirmação de e-mail e senha (verificados também no servidor). */
 export function SignupFields() {
@@ -11,7 +12,6 @@ export function SignupFields() {
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [passwordConfirm, setPasswordConfirm] = useState("");
-  const [show, setShow] = useState(false);
   const [terms, setTerms] = useState(false);
 
   const emailMismatch = emailConfirm.length > 0 && emailConfirm.trim().toLowerCase() !== email.trim().toLowerCase();
@@ -52,9 +52,8 @@ export function SignupFields() {
       </label>
       <label className="field">
         <span>Senha</span>
-        <input
+        <PasswordInput
           className="input"
-          type={show ? "text" : "password"}
           name="password"
           autoComplete="new-password"
           minLength={10}
@@ -67,9 +66,8 @@ export function SignupFields() {
       </label>
       <label className="field">
         <span>Confirmar senha</span>
-        <input
+        <PasswordInput
           className={`input ${passwordMismatch ? "border-loss" : ""}`}
-          type={show ? "text" : "password"}
           name="passwordConfirm"
           autoComplete="new-password"
           value={passwordConfirm}
@@ -82,10 +80,6 @@ export function SignupFields() {
         <small id="pw-confirm-hint" className={passwordMismatch ? "text-loss" : "text-ink-faint"}>
           {passwordMismatch ? "As senhas não conferem." : "Digite a senha novamente."}
         </small>
-      </label>
-      <label className="flex items-center gap-2 text-sm text-ink-soft">
-        <input type="checkbox" checked={show} onChange={(e) => setShow(e.target.checked)} className="h-4 w-4 accent-[#1b2a4a]" />
-        Mostrar senha
       </label>
       <label className="flex items-start gap-3 text-sm text-ink-soft">
         <input type="checkbox" name="acceptTerms" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1 h-4 w-4 accent-[#1b2a4a]" required />

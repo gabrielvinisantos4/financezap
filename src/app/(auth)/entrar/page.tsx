@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { PasswordInput } from "@/components/password-input";
 import { redirect } from "next/navigation";
 import { ActionForm, Submit } from "@/components/forms";
 import { loginAction } from "@/app/actions/auth";
@@ -20,7 +21,7 @@ export default async function LoginPage() {
           </label>
           <label className="field">
             <span>Senha</span>
-            <input className="input" type="password" name="password" autoComplete="current-password" required />
+            <PasswordInput className="input" name="password" autoComplete="current-password" required />
           </label>
           <Submit pendingText="Entrando…">Entrar</Submit>
         </ActionForm>
