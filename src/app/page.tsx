@@ -9,6 +9,7 @@ import { Ways } from "@/components/landing/ways";
 import { Arrow, Pricing } from "@/components/landing/pricing";
 import { ThemeToggle } from "@/components/theme";
 import { env } from "@/server/config/env";
+import { COMPANY } from "@/server/config/company";
 
 export const dynamic = "force-dynamic";
 
@@ -340,7 +341,7 @@ export default async function Home() {
           <Link href="/privacidade">Privacidade</Link>
           <Link href="/entrar">Entrar</Link>
         </nav>
-        <span>© {new Date().getFullYear()} FinanceZap</span>
+        <span>© {new Date().getFullYear()} FinanceZap · {COMPANY.legalName.replace(/^[\d.]+ /, "")} · CNPJ {COMPANY.cnpj}</span>
       </footer>
     </div>
   );

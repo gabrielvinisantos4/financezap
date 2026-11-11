@@ -1,13 +1,15 @@
+import { COMPANY } from "@/server/config/company";
+
 export const metadata = { title: "Política de privacidade" };
 
 export default function Privacy() {
   return (
     <>
       <h1>Política de privacidade</h1>
-      <p>Versão 2026-10-24. Esta política explica quais dados o FinanceZap trata, para quê, com quem compartilha e como você exerce seus direitos previstos na Lei Geral de Proteção de Dados (Lei 13.709/2018).</p>
+      <p>Versão 2026-11-11. Esta política explica quais dados o FinanceZap trata, para quê, com quem compartilha e como você exerce seus direitos previstos na Lei Geral de Proteção de Dados (Lei 13.709/2018).</p>
 
       <h2>Quem é o controlador</h2>
-      <p>[Razão social], CNPJ [•], com sede em [•]. Encarregado de dados (DPO): [nome e e-mail].</p>
+      <p>{COMPANY.legalName}, CNPJ {COMPANY.cnpj}, com sede em {COMPANY.address}. Canal de atendimento ao titular de dados: {COMPANY.email}.</p>
 
       <h2>Quais dados tratamos</h2>
       <ul>
@@ -28,11 +30,11 @@ export default function Privacy() {
       <h2>Com quem compartilhamos (operadores)</h2>
       <ul>
         <li>Meta (WhatsApp Business Platform): transporte das mensagens.</li>
-        <li>OpenAI: interpretação do texto das mensagens, transcrição de áudios e leitura de comprovantes. Enviamos o texto da mensagem, suas categorias e um resumo dos lançamentos recentes necessários para entender o pedido; quando você manda um áudio ou comprovante, enviamos o arquivo e o seu nome (para saber se o comprovante é de um pagamento seu ou de um valor que você recebeu). O arquivo não fica guardado no FinanceZap: guardamos só o lançamento gerado. [Confirmar e registrar as condições contratuais de uso e retenção de dados vigentes do provedor.]</li>
+        <li>OpenAI: interpretação do texto das mensagens, transcrição de áudios e leitura de comprovantes. Enviamos o texto da mensagem, suas categorias e um resumo dos lançamentos recentes necessários para entender o pedido; quando você manda um áudio ou comprovante, enviamos o arquivo e o seu nome (para saber se o comprovante é de um pagamento seu ou de um valor que você recebeu). O arquivo não fica guardado no FinanceZap: guardamos só o lançamento gerado. Pela API, a OpenAI não usa esses dados para treinar seus modelos.</li>
         <li>Asaas: processamento de pagamentos.</li>
-        <li>Provedores de hospedagem e banco de dados: [listar].</li>
+        <li>Vercel (hospedagem do site e do sistema) e Supabase (banco de dados), ambos com servidores em São Paulo.</li>
       </ul>
-      <p>Alguns desses provedores podem tratar dados fora do Brasil. [Descrever o mecanismo de transferência internacional adotado, conforme a LGPD e a regulamentação da ANPD.]</p>
+      <p>A Meta e a OpenAI podem tratar dados fora do Brasil, principalmente nos Estados Unidos. Essas transferências ocorrem para executar o contrato com você e com base nas cláusulas contratuais de proteção de dados adotadas por esses provedores, conforme o art. 33 da LGPD e a regulamentação da ANPD.</p>
 
       <h2>Por quanto tempo</h2>
       <ul>
@@ -43,7 +45,7 @@ export default function Privacy() {
       </ul>
 
       <h2>Seus direitos</h2>
-      <p>Você pode, a qualquer momento, pelo painel: acessar e baixar todos os seus dados, corrigir informações, cancelar a assinatura e excluir sua conta. Para outros pedidos, fale com o encarregado pelo e-mail [•].</p>
+      <p>Você pode, a qualquer momento, pelo painel: acessar e baixar todos os seus dados, corrigir informações, cancelar a assinatura e excluir sua conta. Para outros pedidos, escreva para {COMPANY.email}.</p>
 
       <h2>Segurança</h2>
       <p>Adotamos isolamento de dados por cliente no banco de dados, criptografia em trânsito, senhas com hash forte, controle de acesso por função e registro de acessos administrativos. Nenhum sistema é totalmente imune a incidentes; se algum ocorrer e puder causar risco relevante, comunicaremos os titulares afetados e a ANPD, conforme a lei.</p>

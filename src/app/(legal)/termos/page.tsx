@@ -1,10 +1,13 @@
+import { COMPANY } from "@/server/config/company";
+
 export const metadata = { title: "Termos de uso" };
 
 export default function Terms() {
   return (
     <>
       <h1>Termos de uso</h1>
-      <p>Versão 2026-10-24. Ao criar uma conta você concorda com estes termos.</p>
+      <p>Versão 2026-11-11. Ao criar uma conta você concorda com estes termos.</p>
+      <p>O FinanceZap é oferecido por {COMPANY.legalName}, CNPJ {COMPANY.cnpj}, com endereço em {COMPANY.address}. Contato: {COMPANY.email}.</p>
 
       <h2>O serviço</h2>
       <p>O FinanceZap é uma ferramenta de organização financeira pessoal: registra receitas e despesas que você informa pelo WhatsApp ou pelo painel e apresenta totais e relatórios calculados a partir desses registros.</p>
@@ -22,19 +25,25 @@ export default function Terms() {
       <h2>Assinatura e pagamento</h2>
       <ul>
         <li>O acesso depende de assinatura ativa. Valores, limites de uso e recursos de cada plano estão descritos na página de planos.</li>
-        <li>O acesso é liberado somente após a confirmação do pagamento pelo gateway (Asaas).</li>
-        <li>Em caso de atraso, há uma tolerância de [5] dias antes da suspensão do assistente.</li>
-        <li>Você pode cancelar a qualquer momento; o acesso continua até o fim do período já pago. [Definir política de reembolso e direito de arrependimento, art. 49 do CDC.]</li>
+        <li>Teste grátis: na primeira assinatura com cartão de crédito, você usa o serviço sem custo durante o período de teste informado na contratação. O cartão é validado ao cadastrar, e a primeira cobrança acontece somente no fim do teste. Se cancelar antes, nada é cobrado. O teste é concedido uma única vez por cliente.</li>
+        <li>Depois do teste (ou de imediato, no Pix), a cobrança é recorrente, mensal ou anual conforme o plano escolhido, até você cancelar.</li>
+        <li>O acesso pago é liberado somente após a confirmação do pagamento pelo gateway (Asaas).</li>
+        <li>Em caso de atraso, há uma tolerância de 5 dias antes da suspensão do assistente.</li>
+        <li>Você pode cancelar a qualquer momento pelo painel; o acesso continua até o fim do período já pago e não há novas cobranças.</li>
+        <li>Direito de arrependimento (art. 49 do Código de Defesa do Consumidor): você pode desistir em até 7 dias da primeira cobrança e receber o valor de volta integralmente. Basta pedir pelo e-mail {COMPANY.email}.</li>
       </ul>
 
       <h2>Uso adequado</h2>
       <p>É proibido usar o serviço para fins ilícitos, tentar acessar dados de outros clientes, sobrecarregar o sistema ou contornar limites do plano. Podemos suspender contas que violem estes termos.</p>
 
       <h2>Disponibilidade</h2>
-      <p>O serviço depende de terceiros (Meta/WhatsApp, provedores de IA, hospedagem e pagamentos) e pode ficar indisponível temporariamente. [Definir nível de serviço, limitação de responsabilidade e foro.]</p>
+      <p>O serviço depende de terceiros (Meta/WhatsApp, provedores de IA, hospedagem e pagamentos) e pode ficar indisponível temporariamente. Trabalhamos para manter o serviço no ar e corrigir falhas com rapidez, mas não garantimos funcionamento ininterrupto. Como os valores exibidos vêm do que você registra, confira as informações antes de tomar decisões financeiras com base nelas.</p>
+
+      <h2>Alterações e foro</h2>
+      <p>Podemos atualizar estes termos; mudanças relevantes serão avisadas pelo painel ou por e-mail com antecedência. Fica eleito o foro do domicílio do consumidor, conforme o Código de Defesa do Consumidor.</p>
 
       <h2>Contato</h2>
-      <p>[e-mail de suporte]</p>
+      <p>{COMPANY.email}</p>
     </>
   );
 }
