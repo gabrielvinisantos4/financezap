@@ -383,7 +383,7 @@ async function handleFixed(userId: string, cmd: FixedCommand | null, today: ISOD
  * "Paguei o aluguel": se existe uma conta fixa pendente perto dessa data com o mesmo nome
  * (ou a mesma categoria, quando só há uma), dá baixa nela em vez de lançar outra despesa.
  */
-async function settleFixedBill(tx: Tx, userId: string, entry: Entry, date: ISODate, categoryId: string | null): Promise<Transaction | null> {
+async function settleFixedBill(tx: Tx, userId: string, entry: Entry, date: ISODate, categoryId: string | null, opts: { byNameOnly?: boolean } = {}): Promise<Transaction | null> {
   const candidates = await tx
     .select()
     .from(transactions)
@@ -402,9 +402,28 @@ async function settleFixedBill(tx: Tx, userId: string, entry: Entry, date: ISODa
   const text = `${entry.description} ${entry.merchant ?? ""} ${entry.counterparty ?? ""}`;
   const byName = candidates.filter((c) => normalize(text).split(" ").some((w) => w.length >= 3 && normalize(c.description).split(" ").includes(w)));
   const byCat = categoryId ? candidates.filter((c) => c.categoryId === categoryId) : [];
-  const pick = byName.length ? byName[0] : byCat.length === 1 ? byCat[0] : null;
+  const pick = byName.length ? byName[0] : !opts.byNameOnly && byCat.length === 1 ? byCat[0] : null;
   if (!pick) return null;
-  return updateEntry(tx, userId, pick.id, { status: "paid", occurredOn: date, amountCents: reaisToCents(entry.amount!), paymentMethod: entry.payment_method ?? pick.paymentMethod }, "agent", { reason: "conta fixa paga" });
+  return updateEntry(
+    tx,
+    userId,
+    pick.id,
+    { status: "paid", occurredOn: date, amountCents: entry.amount ? reaisToCents(entry.amount) : pick.amountCents, paymentMethod: entry.payment_method ?? pick.paymentMethod },
+    "agent",
+    { reason: "conta fixa paga" },
+  );
+}
+
+async function fixedPaidReply(tx: Tx, userId: string, settled: Transaction, cats: Category[], today: ISODate): Promise<Reply> {
+  const c = cats.find((x) => x.id === settled.categoryId);
+  const reply = fmt.recordedReply([settled], c ? { name: c.name, icon: c.icon } : null, {});
+  const title = settled.kind === "income" ? "✅ Entrada fixa recebida!" : "✅ Conta fixa paga!";
+  let text = reply.text.replace(/^✅ [^\n]+/, title).replace("Seu lançamento foi salvo com sucesso.", "Dei baixa na conta fixa deste mês — não lancei em dobro.");
+  if (settled.kind === "expense") {
+    const alerts = await newBudgetAlerts(tx, userId, today, [settled.categoryId]);
+    if (alerts.length) text += `\n\n${alerts.join("\n\n")}`;
+  }
+  return { text };
 }
 
 /* ---------------------------- Registro ----------------------------- */
@@ -430,8 +449,19 @@ function resolveCategorySlug(entry: Entry, cats: Category[]): string {
 }
 
 async function recordEntries(userId: string, entries: Entry[], messageId: string, today: ISODate, now: Date, confidence: number): Promise<Reply> {
-  // Faltou valor? Pergunta antes de registrar qualquer coisa.
+  // Faltou valor? Se for "paguei o aluguel" e há conta fixa pendente com esse nome, usa o valor dela.
   const missing = entries.find((e) => e.amount === null);
+  if (missing && entries.length === 1) {
+    const settled = await withUser(userId, async (tx) => {
+      const date = validDate(missing.date, today) ?? today;
+      const cats = await listCategories(tx, userId);
+      const slug = resolveCategorySlug(missing, cats);
+      const cat = cats.find((c) => c.kind === missing.kind && c.slug === slug) ?? null;
+      const t = await settleFixedBill(tx, userId, missing, date, cat?.id ?? null);
+      return t ? fixedPaidReply(tx, userId, t, cats, today) : null;
+    });
+    if (settled) return settled;
+  }
   if (missing) {
     const question = missing.kind === "expense" ? `Qual foi o valor de "${missing.description}"?` : `Qual foi o valor recebido${missing.counterparty ? ` de ${missing.counterparty}` : ""}?`;
     if (entries.length === 1) {
@@ -468,17 +498,7 @@ async function recordEntries(userId: string, entries: Entry[], messageId: string
     if (entries.length === 1 && !entries[0].installments && confidence >= 0.55) {
       const cat = cats.find((c) => c.kind === inputs[0].kind && c.slug === inputs[0].categorySlug) ?? null;
       const settled = await settleFixedBill(tx, userId, entries[0], inputs[0].occurredOn, cat?.id ?? null);
-      if (settled) {
-        const c = cats.find((x) => x.id === settled.categoryId);
-        const reply = fmt.recordedReply([settled], c ? { name: c.name, icon: c.icon } : null, {});
-        const title = settled.kind === "income" ? "✅ Entrada fixa recebida!" : "✅ Conta fixa paga!";
-        let text = reply.text.replace(/^✅ [^\n]+/, title).replace("Seu lançamento foi salvo com sucesso.", "Dei baixa na conta fixa deste mês — não lancei em dobro.");
-        if (settled.kind === "expense") {
-          const alerts = await newBudgetAlerts(tx, userId, today, [settled.categoryId]);
-          if (alerts.length) text += `\n\n${alerts.join("\n\n")}`;
-        }
-        return { text };
-      }
+      if (settled) return fixedPaidReply(tx, userId, settled, cats, today);
     }
 
     // Interpretação incerta ou valor muito alto: confirma antes de gravar

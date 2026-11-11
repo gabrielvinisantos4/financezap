@@ -5,6 +5,7 @@ import { rateLimit } from "@/server/security/rate-limit";
 import { processInbound } from "@/server/whatsapp/processor";
 import { opEvent } from "@/server/ops/events";
 import { runDailyIfDue } from "@/server/ops/maintenance";
+import { sendDueReminders } from "@/server/whatsapp/reminders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -36,6 +37,7 @@ export async function POST(req: Request) {
       }
       // Garantia extra: se o cron do dia ainda não rodou, roda agora (depois da resposta ao cliente)
       await runDailyIfDue().catch((err) => opEvent("error", "maintenance.daily_failed", "Falha nas rotinas diárias", { err: String(err).slice(0, 300) }));
+      await sendDueReminders().catch((err) => opEvent("error", "reminder.run_failed", "Falha ao enviar lembretes", { err: String(err).slice(0, 300) }));
     });
   }
   return new Response(result.status === 200 ? "ok" : "invalid signature", { status: result.status });

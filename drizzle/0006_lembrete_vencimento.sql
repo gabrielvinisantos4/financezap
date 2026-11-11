@@ -1,0 +1,1 @@
+ALTER TABLE "transactions" ADD COLUMN "reminded_at" timestamp with time zone;

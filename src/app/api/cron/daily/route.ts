@@ -1,5 +1,6 @@
 import { runDailyIfDue } from "@/server/ops/maintenance";
 import { opEvent } from "@/server/ops/events";
+import { sendDueReminders } from "@/server/whatsapp/reminders";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -15,7 +16,8 @@ export async function GET(req: Request) {
   if (secret && req.headers.get("authorization") !== `Bearer ${secret}`) return new Response("forbidden", { status: 403 });
   try {
     const ran = await runDailyIfDue();
-    return Response.json({ ok: true, ran });
+    const reminders = await sendDueReminders();
+    return Response.json({ ok: true, ran, reminders });
   } catch (err) {
     await opEvent("error", "maintenance.daily_failed", "Falha nas rotinas diárias", { err: String(err).slice(0, 300) });
     return Response.json({ ok: false }, { status: 500 });

@@ -381,6 +381,8 @@ export const transactions = pgTable(
     installmentNumber: integer("installment_number"),
     installmentTotal: integer("installment_total"),
     recurringRuleId: uuid("recurring_rule_id"),
+    // Lembrete do dia do vencimento já enviado no WhatsApp (envia uma vez só)
+    remindedAt: timestamp("reminded_at", { withTimezone: true }),
     refundOfId: uuid("refund_of_id"),
     notes: text("notes"),
     source: txSource("source").notNull().default("web"),

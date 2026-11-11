@@ -295,3 +295,52 @@ describe("áudio e comprovantes", () => {
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
   });
 });
+
+/* ------------------------- lembrete de vencimento ------------------------- */
+import { sendDueReminders } from "@/server/whatsapp/reminders";
+import { handleMessage } from "@/server/agent/agent";
+import { RuleInterpreter } from "@/server/agent/fallback";
+
+describe("lembrete no dia do vencimento", () => {
+  // 10/11/2026 09:00 em São Paulo
+  const NOW = new Date("2026-11-10T12:00:00Z");
+  const deps = { interpreter: new RuleInterpreter(), now: () => NOW };
+  const say = (userId: string, text: string) => handleMessage(userId, { messageId: `wamid.R${++n}`, text }, { aiAllowed: true, advancedReports: true }, deps);
+
+  it("envia uma vez só, no dia; com conversa recente vai texto livre, senão vai o modelo aprovado", async () => {
+    const u = await linkedSubscriber("5544999990030");
+    await say(u.id, "meu aluguel é 1.200 todo dia 10"); // vence hoje → já vira conta a pagar
+    await say(u.id, "internet 120 todo mês dia 12"); // vence em 2 dias → sem lembrete hoje
+    dryRunOutbox.length = 0;
+
+    // De madrugada não envia
+    expect(await sendDueReminders(new Date("2026-11-10T06:00:00Z"))).toMatchObject({ sent: 0 });
+
+    const r1 = await sendDueReminders(NOW);
+    expect(r1.sent).toBe(1);
+    const body = dryRunOutbox[0].body as { type: string; text?: { body: string } };
+    expect(body.type).toBe("text"); // conversou há pouco (vínculo) → mensagem livre
+    expect(body.text?.body).toContain("hoje vence 🏠 *Aluguel* — R$ 1.200,00");
+
+    // Rodar de novo não duplica
+    expect((await sendDueReminders(new Date("2026-11-10T15:00:00Z"))).sent).toBe(0);
+    expect(dryRunOutbox).toHaveLength(1);
+
+    // "paguei o aluguel" sem valor dá baixa com o valor da conta fixa
+    const paid = await say(u.id, "paguei o aluguel");
+    expect(paid.reply.text).toContain("Conta fixa paga");
+    expect(paid.reply.text).toContain("R$ 1.200,00");
+  });
+
+  it("sem conversa nas últimas 24 h usa o modelo aprovado pela Meta", async () => {
+    const u = await linkedSubscriber("5544999990031");
+    await say(u.id, "meu aluguel é 900 todo dia 10");
+    await db().update(inboundMessages).set({ receivedAt: new Date("2026-11-01T12:00:00Z") });
+    dryRunOutbox.length = 0;
+    await sendDueReminders(NOW);
+    const body = dryRunOutbox[0].body as { type: string; template: { name: string; components: { parameters: { text: string }[] }[] } };
+    expect(body.type).toBe("template");
+    expect(body.template.name).toBe("lembrete_vencimento");
+    expect(body.template.components[0].parameters.map((p) => p.text)).toEqual(["Cliente", "Aluguel", "R$ 900,00"]);
+  });
+});

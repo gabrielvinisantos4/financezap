@@ -43,6 +43,13 @@
       "when": 1794398734887,
       "tag": "0005_categorias_detalhadas",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794400388949,
+      "tag": "0006_lembrete_vencimento",
+      "breakpoints": true
     }
   ]
 }
