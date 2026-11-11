@@ -68,6 +68,9 @@ export const users = pgTable(
     blockedReason: text("blocked_reason"),
     // Afiliado que trouxe este cliente (link /r/<código>); sem FK para não criar ciclo com affiliates
     referredByAffiliateId: uuid("referred_by_affiliate_id"),
+    // Mensagem de "continue seu cadastro" enviada pelo admin (WhatsApp)
+    recoverySentAt: timestamp("recovery_sent_at", { withTimezone: true }),
+    recoveryCount: integer("recovery_count").notNull().default(0),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),

@@ -64,6 +64,13 @@
       "when": 1794431670635,
       "tag": "0008_afiliados_pix",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1794433214049,
+      "tag": "0009_recuperar_cadastro",
+      "breakpoints": true
     }
   ]
 }

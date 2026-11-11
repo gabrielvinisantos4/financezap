@@ -27,6 +27,8 @@ const schema = z.object({
   AFFILIATE_COMMISSION_PCT: z.coerce.number().min(0).max(90).default(30),
   // Pix mensal: valor mínimo do repasse e carência (dias) antes de a comissão poder ser paga
   AFFILIATE_PIX_MIN_CENTS: z.coerce.number().int().min(0).default(2000),
+  // Modelo aprovado na Meta para chamar quem parou no meio do cadastro
+  RECOVERY_TEMPLATE_NAME: z.string().default("retomar_cadastro"),
   AFFILIATE_PIX_HOLD_DAYS: z.coerce.number().int().min(0).max(60).default(7),
 
   // Segredo para HMAC de tokens/códigos (mín. 32 chars em produção)

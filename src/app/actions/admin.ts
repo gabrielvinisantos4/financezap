@@ -5,6 +5,7 @@ import { z } from "zod";
 import { requireAdmin } from "@/server/auth/session";
 import { audit, planSchema, savePlan, setUserBlocked } from "@/server/admin/admin";
 import { grantManualSubscription } from "@/server/billing/subscriptions";
+import { sendRecoveryMessage } from "@/server/admin/recovery";
 import { parseBRL } from "@/server/finance/money";
 import { FinanceError } from "@/server/finance/errors";
 import type { FormState } from "./auth";
@@ -64,6 +65,19 @@ export async function savePlanAction(_: FormState, form: FormData): Promise<Form
   } catch (err) {
     if (err instanceof FinanceError) return { error: err.userMessage };
     if (err instanceof z.ZodError) return { error: err.issues[0].message };
+    throw err;
+  }
+}
+
+export async function sendRecoveryAction(_: FormState, form: FormData): Promise<FormState> {
+  const admin = await requireAdmin("manage_users");
+  try {
+    const id = z.string().uuid().parse(form.get("id"));
+    await sendRecoveryMessage(id, admin.id);
+    revalidatePath("/admin/recuperacao");
+    return { message: "Mensagem enviada no WhatsApp." };
+  } catch (err) {
+    if (err instanceof FinanceError) return { error: err.userMessage };
     throw err;
   }
 }

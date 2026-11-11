@@ -27,6 +27,7 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
     acceptTerms: form.get("acceptTerms") === "on",
   });
   if (!parsed.success) return { error: parsed.error.issues[0].message };
+  if (!parsed.data.phone) return { error: "Informe seu WhatsApp com DDD." };
   const emailConfirm = String(form.get("emailConfirm") ?? "").trim().toLowerCase();
   if (emailConfirm !== parsed.data.email) return { error: "Os e-mails não conferem. Digite o mesmo e-mail nos dois campos." };
   if (String(form.get("passwordConfirm") ?? "") !== parsed.data.password) return { error: "As senhas não conferem. Digite a mesma senha nos dois campos." };

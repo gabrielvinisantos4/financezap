@@ -48,7 +48,8 @@ export function SignupFields() {
       </label>
       <label className="field">
         <span>WhatsApp (com DDD)</span>
-        <input className="input" type="tel" name="phone" autoComplete="tel" inputMode="tel" placeholder="(44) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} />
+        <input className="input" type="tel" name="phone" autoComplete="tel" inputMode="tel" placeholder="(44) 99999-9999" value={phone} onChange={(e) => setPhone(e.target.value)} required />
+        <small className="text-ink-faint">É por ele que o assistente vai falar com você. Podemos mandar avisos sobre a sua conta por aqui.</small>
       </label>
       <label className="field">
         <span>Senha</span>
