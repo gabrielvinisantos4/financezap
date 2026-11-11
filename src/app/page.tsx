@@ -7,7 +7,7 @@ import { LogoBars, Phone } from "@/components/landing/phone";
 import { Dashboard, Icon, LIMITS, Ring } from "@/components/landing/dashboard";
 import { Ways } from "@/components/landing/ways";
 import { Arrow, Pricing } from "@/components/landing/pricing";
-import { ThemeToggle } from "@/components/theme";
+import { SiteNav } from "@/components/landing/site-nav";
 import { env } from "@/server/config/env";
 import { COMPANY } from "@/server/config/company";
 
@@ -71,37 +71,7 @@ export default async function Home() {
     <div className="fz">
       <Reveal />
 
-      <header className="fz-nav">
-        <div className="fz-nav-in glass">
-          <Link href="/" className="fz-logo" aria-label="FinanceZap, página inicial">
-            <span className="fz-logo-mark">
-              <LogoBars />
-            </span>
-            FinanceZap
-          </Link>
-          <nav aria-label="Principal">
-            <a href="#como-funciona">Como funciona</a>
-            <a href="#recursos">Recursos</a>
-            <a href="#planos">Planos</a>
-            <a href="#perguntas">Perguntas</a>
-          </nav>
-          <div className="fz-nav-cta">
-            <ThemeToggle />
-            {panelHref ? (
-              <Link href={panelHref} className="fz-pill fz-pill-ghost">
-                Abrir painel
-              </Link>
-            ) : (
-              <Link href="/entrar" className="fz-pill fz-pill-ghost">
-                Entrar
-              </Link>
-            )}
-            <Link href="/cadastro" className="fz-pill fz-pill-green fz-nav-main">
-              Criar minha conta
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteNav links={[{ href: "#como-funciona", label: "Como funciona" }, { href: "#recursos", label: "Recursos" }, { href: "#planos", label: "Planos" }, { href: "#perguntas", label: "Perguntas" }, { href: "/afiliados", label: "Seja afiliado" }]} panelHref={panelHref} cta={{ href: "/cadastro", label: "Criar conta" }} />
 
       <main>
         {/* HERO */}

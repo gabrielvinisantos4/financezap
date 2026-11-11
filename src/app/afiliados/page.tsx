@@ -3,7 +3,7 @@ import "../landing.css";
 import { Reveal } from "@/components/landing/reveal";
 import { LogoBars } from "@/components/landing/phone";
 import { Arrow } from "@/components/landing/pricing";
-import { ThemeToggle } from "@/components/theme";
+import { SiteNav } from "@/components/landing/site-nav";
 import { env } from "@/server/config/env";
 import { listActivePlans } from "@/server/billing/subscriptions";
 import { currentUser } from "@/server/auth/session";
@@ -41,32 +41,7 @@ export default async function AffiliateLanding() {
   return (
     <div className="fz">
       <Reveal />
-      <header className="fz-nav">
-        <div className="fz-nav-in glass">
-          <Link href="/" className="fz-logo" aria-label="FinanceZap, página inicial">
-            <span className="fz-logo-mark">
-              <LogoBars />
-            </span>
-            FinanceZap
-          </Link>
-          <nav aria-label="Principal">
-            <a href="#como-funciona">Como funciona</a>
-            <a href="#ganhos">Quanto ganho</a>
-            <a href="#perguntas">Perguntas</a>
-          </nav>
-          <div className="fz-nav-cta">
-            <ThemeToggle />
-            {!user && (
-              <Link href="/entrar?voltar=/app/afiliados" className="fz-pill fz-pill-ghost">
-                Entrar
-              </Link>
-            )}
-            <Link href={join} className="fz-pill fz-pill-green fz-nav-main">
-              Quero ser afiliado
-            </Link>
-          </div>
-        </div>
-      </header>
+      <SiteNav links={[{ href: "#como-funciona", label: "Como funciona" }, { href: "#ganhos", label: "Quanto ganho" }, { href: "#perguntas", label: "Perguntas" }, { href: "/", label: "Conheça o FinanceZap" }]} panelHref={(user ? (user.role === "user" ? "/app" : "/admin") : null)} cta={{ href: join, label: "Quero ser afiliado" }} />
 
       <main>
         <section className="fz-section fz-aff-hero" data-reveal>
