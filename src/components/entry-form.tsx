@@ -33,7 +33,7 @@ export function EntryForm({ categories, accounts, defaults }: { categories: Opt[
       )}
       <fieldset className="grid grid-cols-2 gap-1 rounded-full bg-paper p-1" aria-label="Tipo">
         {(["expense", "income"] as const).map((k) => (
-          <label key={k} className={`cursor-pointer rounded-full py-2 text-center text-sm font-semibold ${kind === k ? (k === "expense" ? "bg-loss text-white" : "bg-gain text-white") : "text-ink-soft"}`}>
+          <label key={k} className={`cursor-pointer rounded-full py-2 text-center text-sm font-semibold ${kind === k ? (k === "expense" ? "bg-surface text-loss shadow-sm" : "bg-surface text-gain shadow-sm") : "text-ink-soft"}`}>
             <input type="radio" name="kind" value={k} checked={kind === k} onChange={() => setKind(k)} className="sr-only" />
             {k === "expense" ? "Despesa" : "Receita"}
           </label>
@@ -98,7 +98,7 @@ export function EntryForm({ categories, accounts, defaults }: { categories: Opt[
         </label>
       )}
       <label className="flex items-center gap-2 text-sm">
-        <input type="checkbox" name="pending" defaultChecked={defaults.pending} className="h-4 w-4 accent-[#1b2a4a]" />
+        <input type="checkbox" name="pending" defaultChecked={defaults.pending} className="h-4 w-4 accent-[#16a34a]" />
         {kind === "expense" ? "Ainda não paguei (conta a pagar com vencimento na data acima)" : "Ainda não recebi (conta a receber)"}
       </label>
       <label className="field">

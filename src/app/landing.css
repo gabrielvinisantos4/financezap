@@ -119,7 +119,7 @@
 }
 
 /* ===================== Tema escuro ===================== */
-.fz[data-theme="dark"] {
+:root[data-theme="dark"] .fz {
   --bg: #07100c;
   --ink: #edf3f0;
   --ink-2: #a6b3ad;
@@ -160,7 +160,7 @@
   --wa-field: #2a3942;
   color-scheme: dark;
 }
-.fz[data-theme="dark"] .fz-final {
+:root[data-theme="dark"] .fz .fz-final {
   background:
     radial-gradient(600px 300px at 50% -10%, rgba(34, 197, 94, 0.3), transparent 70%),
     radial-gradient(500px 260px at 100% 110%, rgba(34, 197, 94, 0.12), transparent 70%),
@@ -169,14 +169,14 @@
     inset 0 0 0 1px rgba(255, 255, 255, 0.06),
     var(--shadow-lg);
 }
-.fz[data-theme="dark"] .fz-pill-green {
+:root[data-theme="dark"] .fz .fz-pill-green {
   color: #04140a !important;
 }
-.fz[data-theme="dark"] .ph-icons i,
-.fz[data-theme="dark"] .ph-status {
+:root[data-theme="dark"] .fz .ph-icons i,
+:root[data-theme="dark"] .fz .ph-status {
   color: var(--wa-text);
 }
-.fz[data-theme="dark"] .ph-icons i {
+:root[data-theme="dark"] .fz .ph-icons i {
   background: var(--wa-text);
 }
 .fz,
@@ -209,10 +209,10 @@
 .fz-theme .is-sun {
   display: none;
 }
-.fz[data-theme="dark"] .fz-theme .is-sun {
+:root[data-theme="dark"] .fz .fz-theme .is-sun {
   display: block;
 }
-.fz[data-theme="dark"] .fz-theme .is-moon {
+:root[data-theme="dark"] .fz .fz-theme .is-moon {
   display: none;
 }
 

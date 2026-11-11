@@ -82,7 +82,7 @@ export function SignupFields() {
         </small>
       </label>
       <label className="flex items-start gap-3 text-sm text-ink-soft">
-        <input type="checkbox" name="acceptTerms" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1 h-4 w-4 accent-[#1b2a4a]" required />
+        <input type="checkbox" name="acceptTerms" checked={terms} onChange={(e) => setTerms(e.target.checked)} className="mt-1 h-4 w-4 accent-[#16a34a]" required />
         <span>
           Li e aceito os <Link href="/termos" className="underline" target="_blank">Termos de uso</Link> e a{" "}
           <Link href="/privacidade" className="underline" target="_blank">Política de privacidade</Link>.

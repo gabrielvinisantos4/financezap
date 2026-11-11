@@ -48,9 +48,9 @@ export function Simulator() {
   }
 
   return (
-    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[480px] max-w-2xl flex-col overflow-hidden rounded-[24px] border border-line bg-[#e9ecf1] lg:h-[calc(100dvh-10rem)]">
-      <div className="flex items-center gap-3 bg-ink px-4 py-3 text-white">
-        <span className="grid h-9 w-9 place-items-center rounded-full bg-coin font-bold text-ink" aria-hidden="true">F</span>
+    <div className="mx-auto flex h-[calc(100dvh-13rem)] min-h-[480px] max-w-2xl flex-col overflow-hidden card rounded-[28px] bg-[#efeae2] dark:bg-[#0b141a] lg:h-[calc(100dvh-10rem)]">
+      <div className="flex items-center gap-3 bg-night px-4 py-3 text-white">
+        <span className="grid h-9 w-9 place-items-center rounded-full bg-gain font-bold text-white" aria-hidden="true">F</span>
         <div className="leading-tight">
           <p className="font-semibold">FinanceZap</p>
           <p className="text-xs text-white/70">{pending ? "digitando…" : "simulador do WhatsApp"}</p>
@@ -59,14 +59,14 @@ export function Simulator() {
 
       <div className="flex-1 overflow-y-auto px-3 py-4" aria-live="polite">
         {msgs.length === 0 && (
-          <div className="mx-auto max-w-sm rounded-xl bg-white/80 p-4 text-center text-sm text-ink-soft">
+          <div className="mx-auto max-w-sm rounded-[16px] bg-surface/80 p-4 text-center text-sm text-ink-soft">
             Escreva como escreveria no WhatsApp. Tudo o que você registrar aqui aparece no painel na hora.
           </div>
         )}
         <ol className="grid gap-2">
           {msgs.map((m) => (
             <li key={m.id} className={`flex ${m.from === "me" ? "justify-end" : "justify-start"}`}>
-              <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2 text-[0.95rem] leading-snug ${m.from === "me" ? "rounded-br-md bg-ink text-white" : "rounded-bl-md bg-white text-ink"}`}>
+              <div className={`max-w-[85%] whitespace-pre-line rounded-2xl px-3.5 py-2 text-[0.95rem] leading-snug ${m.from === "me" ? "rounded-br-md bg-gain text-white" : "rounded-bl-md bg-surface text-ink"}`}>
                 {m.text}
                 <span className={`mt-1 block text-right text-[0.68rem] ${m.from === "me" ? "text-white/60" : "text-ink-faint"}`}>{m.time}</span>
                 {m.buttons && m.buttons.length > 0 && (
@@ -99,7 +99,7 @@ export function Simulator() {
 
       <div className="flex gap-2 overflow-x-auto px-3 pb-2">
         {SUGGESTIONS.map((s) => (
-          <button key={s} type="button" disabled={pending} onClick={() => send({ text: s }, s)} className="shrink-0 rounded-full border border-line bg-white px-3 py-1.5 text-sm hover:bg-paper disabled:opacity-50">
+          <button key={s} type="button" disabled={pending} onClick={() => send({ text: s }, s)} className="shrink-0 rounded-full border border-line bg-surface px-3 py-1.5 text-sm hover:bg-paper disabled:opacity-50">
             {s}
           </button>
         ))}

@@ -12,8 +12,9 @@ export default async function LoginPage() {
   if (u) redirect(u.role === "user" ? "/app" : "/admin");
   return (
     <>
-      <h1 className="display text-4xl">Entrar</h1>
-      <div className="mt-8">
+      <h1 className="text-[2rem] font-bold tracking-[-0.04em]">Entrar</h1>
+      <p className="mt-1.5 text-ink-soft">Bom te ver de novo.</p>
+      <div className="mt-7">
         <ActionForm action={loginAction}>
           <label className="field">
             <span>E-mail</span>
@@ -23,11 +24,11 @@ export default async function LoginPage() {
             <span>Senha</span>
             <PasswordInput className="input" name="password" autoComplete="current-password" required />
           </label>
-          <Submit pendingText="Entrando…">Entrar</Submit>
+          <Submit pendingText="Entrando…" className="btn btn-primary mt-1 w-full">Entrar</Submit>
         </ActionForm>
       </div>
       <p className="mt-6 text-sm text-ink-soft">
-        Ainda não tem conta? <Link href="/cadastro" className="font-semibold text-ink underline">Criar conta</Link>
+        Ainda não tem conta? <Link href="/cadastro" className="font-semibold text-gain underline-offset-2 hover:underline">Criar conta</Link>
       </p>
     </>
   );

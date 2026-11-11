@@ -1,15 +1,14 @@
-import Link from "next/link";
 import { withUser } from "@/server/db/client";
 import { availability, dailyExpenses, listTransactions, payables, periodSummary, totalsByCategory } from "@/server/finance/queries";
 import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
 import { addDays, addMonths, daysInMonth, endOfMonth, formatBR, monthLabel, monthName, resolvePeriod, startOfMonth } from "@/server/finance/dates";
 import { appContext } from "@/server/app-context";
-import { Empty, Money, Panel } from "@/components/ui";
+import { Empty, Money, Panel, PanelLink, Stat } from "@/components/ui";
+import { Ring } from "@/components/ring";
 import { EntryForm } from "@/components/entry-form";
 import { SpendingBreakdown } from "@/components/spending-breakdown";
 import { SpendingPace, type PacePoint } from "@/components/spending-pace";
-import { BudgetBar } from "@/components/budget-bar";
 import { formatBRL } from "@/server/finance/money";
 
 export const metadata = { title: "Visão geral" };
@@ -60,70 +59,69 @@ export default async function Overview() {
   });
   const monthLimit = data.budgets.find((b) => b.categoryId === null)?.limitCents ?? null;
 
+  const firstName = user.name.trim().split(/\s+/)[0] ?? "";
+  const hour = Number(new Intl.DateTimeFormat("pt-BR", { hour: "numeric", hour12: false, timeZone: "America/Sao_Paulo" }).format(new Date()));
+  const greeting = hour < 12 ? "Bom dia" : hour < 18 ? "Boa tarde" : "Boa noite";
+  const savings = data.summary.incomeCents > 0 ? Math.round((data.summary.resultCents / data.summary.incomeCents) * 100) : null;
+
   return (
     <div className="grid gap-6">
-      <section aria-labelledby="disp" className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-        <div className="rounded-3xl bg-ink p-6 text-white sm:p-8">
-          <h1 id="disp" className="text-white/70">Disponível nas suas contas</h1>
-          <p className="display money mt-2 whitespace-nowrap text-[2.4rem] text-coin sm:text-6xl">
-            <Money cents={data.avail.availableCents} />
-          </p>
-          <dl className="mt-6 grid grid-cols-2 gap-4 text-sm sm:grid-cols-3">
-            <div>
-              <dt className="text-white/60">Comprometido</dt>
-              <dd className="money mt-0.5 text-lg"><Money cents={committed} /></dd>
-            </div>
-            <div>
-              <dt className="text-white/60">A receber</dt>
-              <dd className="money mt-0.5 text-lg"><Money cents={data.avail.receivablesCents} /></dd>
-            </div>
-            <div>
-              <dt className="text-white/60">Projeção</dt>
-              <dd className="money mt-0.5 text-lg"><Money cents={data.avail.projectedCents} /></dd>
-            </div>
-          </dl>
+      <header className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h1 className="text-[1.75rem] font-bold leading-tight tracking-[-0.035em] sm:text-[2.1rem]">
+            {greeting}
+            {firstName ? `, ${firstName}` : ""}
+          </h1>
+          <p className="mt-1 text-ink-soft">Veja como estão suas finanças este mês.</p>
         </div>
-        <Panel title={`Resultado de ${monthLabel(today)}`}>
-          <dl className="grid gap-3">
-            <div className="flex items-baseline justify-between">
-              <dt className="text-ink-soft">Entradas</dt>
-              <dd className="money text-xl text-gain"><Money cents={data.summary.incomeCents} /></dd>
-            </div>
-            <div className="flex items-baseline justify-between">
-              <dt className="text-ink-soft">Saídas</dt>
-              <dd className="money text-xl text-loss"><Money cents={data.summary.netExpenseCents} /></dd>
-            </div>
-            <div className="flex items-baseline justify-between border-t border-line pt-3">
-              <dt className="font-semibold">Resultado</dt>
-              <dd className="wide money text-2xl"><Money cents={data.summary.resultCents} sign /></dd>
-            </div>
-          </dl>
-          <Link href="/app/relatorios" className="mt-4 inline-block text-sm font-semibold underline-offset-2 hover:underline">Ver relatório do mês</Link>
-        </Panel>
+        <span className="card inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold capitalize">{monthLabel(today)}</span>
+      </header>
+
+      <section aria-label="Resumo do mês" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
+        <Stat icon="wallet" label="Disponível">
+          <Money cents={data.avail.availableCents} />
+        </Stat>
+        <Stat icon="up" label="Entradas" tone="gain">
+          <Money cents={data.summary.incomeCents} />
+        </Stat>
+        <Stat icon="down" label="Saídas" tone="loss">
+          <Money cents={data.summary.netExpenseCents} />
+        </Stat>
+        <Stat icon="piggy" label="Resultado" hint={savings !== null && savings > 0 ? `${savings}% guardado` : undefined}>
+          <Money cents={data.summary.resultCents} sign />
+        </Stat>
       </section>
 
-      <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
-        <div className="grid gap-6">
-          <Panel title="Onde foi o dinheiro neste mês">
+      <section aria-label="Panorama" className="glass grid grid-cols-3 divide-x divide-line rounded-[24px] py-4 text-center sm:text-left">
+        {[
+          ["Comprometido", committed],
+          ["A receber", data.avail.receivablesCents],
+          ["Projeção do mês", data.avail.projectedCents],
+        ].map(([label, cents]) => (
+          <div key={label as string} className="px-3 sm:px-6">
+            <p className="text-xs font-medium text-ink-faint sm:text-sm">{label}</p>
+            <p className="money mt-0.5 text-[0.95rem] font-semibold sm:text-lg">
+              <Money cents={cents as number} />
+            </p>
+          </div>
+        ))}
+      </section>
+
+      <div className="grid gap-6 lg:grid-cols-[1.35fr_1fr]">
+        <div className="grid content-start gap-6">
+          <Panel title="Para onde vai seu dinheiro" action={<PanelLink href="/app/relatorios">Relatório</PanelLink>}>
             {breakdown.length === 0 ? (
-              <Empty title="Nenhuma despesa neste mês">Mande “gastei 50 no mercado” no WhatsApp ou adicione ao lado.</Empty>
+              <Empty title="Nenhuma despesa neste mês">Mande “gastei 50 no mercado” no WhatsApp ou adicione pelo painel.</Empty>
             ) : (
               <>
-                <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2">
-                  <p className="money text-3xl font-semibold tracking-tight">{formatBRL(spentNow)}</p>
-                  <p className="text-sm text-ink-soft">
-                    {paceDelta === null ? (
-                      `em ${breakdown.length} ${breakdown.length === 1 ? "categoria" : "categorias"}`
-                    ) : (
-                      <>
-                        <span className={paceDelta > 0 ? "font-semibold text-loss" : "font-semibold text-gain"}>
-                          {paceDelta > 0 ? "▲" : "▼"} {Math.abs(paceDelta)}%
-                        </span>{" "}
-                        vs mesmo período de {prevName}
-                      </>
-                    )}
+                {paceDelta !== null && (
+                  <p className="-mt-2 mb-4 text-sm text-ink-soft">
+                    <span className={paceDelta > 0 ? "font-semibold text-loss" : "font-semibold text-gain"}>
+                      {paceDelta > 0 ? "▲" : "▼"} {Math.abs(paceDelta)}%
+                    </span>{" "}
+                    vs mesmo período de {prevName}
                   </p>
-                </div>
+                )}
                 <SpendingBreakdown rows={breakdown} prevLabel={prevName} />
               </>
             )}
@@ -137,40 +135,52 @@ export default async function Overview() {
             )}
           </Panel>
 
-          <Panel title="Últimos lançamentos" action={<Link href="/app/lancamentos" className="text-sm font-semibold">Ver todos</Link>}>
+          <Panel title="Últimas movimentações" action={<PanelLink href="/app/lancamentos">Ver todas</PanelLink>}>
             {data.recent.length === 0 ? (
               <Empty title="Nada por aqui ainda">Seus registros pelo WhatsApp aparecem aqui na hora.</Empty>
             ) : (
-              <ul className="divide-y divide-line">
-                {data.recent.map((t) => (
-                  <li key={t.id} className="flex items-center justify-between gap-3 py-2.5">
-                    <div className="min-w-0">
-                      <p className="truncate font-medium">{t.categoryIcon} {t.description}</p>
-                      <p className="text-xs text-ink-faint">{formatBR(t.occurredOn)} · {t.accountName}{t.status === "pending" ? " · a pagar" : ""}</p>
-                    </div>
-                    <Money cents={t.kind === "income" || t.kind === "refund" ? t.amountCents : t.kind === "expense" ? -t.amountCents : 0} sign className="shrink-0 font-semibold" />
-                  </li>
-                ))}
+              <ul className="grid">
+                {data.recent.map((t, i) => {
+                  const cents = t.kind === "income" || t.kind === "refund" ? t.amountCents : t.kind === "expense" ? -t.amountCents : 0;
+                  return (
+                    <li key={t.id} className={`flex items-center gap-3 py-3 ${i ? "border-t border-line" : ""}`}>
+                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] text-lg ${cents > 0 ? "bg-gain-soft" : "bg-paper"}`} aria-hidden="true">
+                        {t.categoryIcon || "•"}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate font-semibold">{t.description}</p>
+                        <p className="truncate text-xs text-ink-faint">
+                          {formatBR(t.occurredOn)} · {t.accountName}
+                          {t.status === "pending" ? " · a pagar" : ""}
+                        </p>
+                      </div>
+                      <Money cents={cents} sign className="shrink-0 font-semibold" />
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </Panel>
         </div>
 
         <div className="grid content-start gap-6">
-          <Panel title="Limites do mês" action={<Link href="/app/limites" className="text-sm font-semibold">{data.budgets.length ? "Gerenciar" : "Criar"}</Link>}>
+          <Panel title="Limites do mês" action={<PanelLink href="/app/limites">{data.budgets.length ? "Gerenciar" : "Criar"}</PanelLink>}>
             {data.budgets.length === 0 ? (
               <p className="text-sm text-ink-soft">Defina quanto quer gastar por categoria e receba um aviso no WhatsApp ao chegar em 80%. Ex.: “limite de 800 para mercado”.</p>
             ) : (
-              <ul className="grid gap-4">
+              <ul className="grid grid-cols-3 gap-x-2 gap-y-5">
                 {data.budgets.slice(0, 6).map((b) => (
-                  <li key={b.id} className="grid gap-1.5">
-                    <div className="flex justify-between gap-2 text-sm">
-                      <span className="truncate">{b.icon} {b.name}</span>
-                      <span className="money shrink-0 tabular-nums">
-                        {formatBRL(b.spentCents)} <span className="text-ink-faint">/ {formatBRL(b.limitCents)}</span>
-                      </span>
-                    </div>
-                    <BudgetBar pct={b.pct} />
+                  <li key={b.id} className="grid justify-items-center text-center">
+                    <span className="relative grid place-items-center">
+                      <Ring pct={b.pct} size={74} stroke={7} color={b.pct >= 100 ? "var(--color-loss)" : b.pct >= 80 ? "var(--color-coin)" : "var(--color-gain)"} />
+                      <b className="absolute text-[0.95rem] tracking-[-0.03em]">{b.pct}%</b>
+                    </span>
+                    <span className="mt-2 w-full truncate text-sm font-semibold">
+                      {b.icon} {b.name}
+                    </span>
+                    <span className="money text-[0.7rem] text-ink-faint">
+                      {formatBRL(b.spentCents)} de {formatBRL(b.limitCents)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -180,11 +190,14 @@ export default async function Overview() {
             {data.due.length === 0 ? (
               <p className="text-sm text-ink-soft">Nenhuma conta a pagar no período.</p>
             ) : (
-              <ul className="grid gap-2 text-sm">
+              <ul className="grid gap-2">
                 {data.due.map((t) => (
-                  <li key={t.id} className="flex justify-between gap-2">
-                    <span className={t.dueOn && t.dueOn < today ? "text-loss" : ""}>{t.dueOn ? formatBR(t.dueOn).slice(0, 5) : ""} · {t.description}</span>
-                    <Money cents={t.amountCents} />
+                  <li key={t.id} className="flex items-center gap-3 rounded-[16px] bg-paper px-3 py-2.5 text-sm">
+                    <span className={`grid h-9 w-9 shrink-0 place-items-center rounded-[11px] text-xs font-bold ${t.dueOn && t.dueOn < today ? "bg-loss-soft text-loss" : "bg-coin-soft text-coin"}`}>
+                      {t.dueOn ? formatBR(t.dueOn).slice(0, 2) : "—"}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate font-medium">{t.description}</span>
+                    <Money cents={t.amountCents} className="font-semibold" />
                   </li>
                 ))}
               </ul>

@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { Icon, type IconName } from "@/components/icons";
 
-export type NavItem = { href: string; label: string; icon: string; mobile?: boolean };
+export type NavItem = { href: string; label: string; icon: IconName; mobile?: boolean };
 
 export function AppNav({ items, variant }: { items: NavItem[]; variant: "desktop" | "mobile" }) {
   const path = usePathname();
@@ -12,35 +13,47 @@ export function AppNav({ items, variant }: { items: NavItem[]; variant: "desktop
     return (
       <nav aria-label="Seções">
         <ul className="grid gap-1">
-          {items.map((i) => (
-            <li key={i.href}>
-              <Link
-                href={i.href}
-                aria-current={isActive(i.href) ? "page" : undefined}
-                className={`flex items-center gap-3 rounded-xl px-3 py-2.5 font-medium ${isActive(i.href) ? "bg-ink text-white" : "text-ink-soft hover:bg-surface hover:text-ink"}`}
-              >
-                <span aria-hidden="true" className="w-5 text-center">{i.icon}</span>
-                {i.label}
-              </Link>
-            </li>
-          ))}
+          {items.map((i) => {
+            const on = isActive(i.href);
+            return (
+              <li key={i.href}>
+                <Link
+                  href={i.href}
+                  aria-current={on ? "page" : undefined}
+                  className={`flex h-11 items-center gap-3 rounded-[14px] px-3.5 text-[0.93rem] font-medium transition-colors ${
+                    on ? "bg-gain-soft font-semibold text-gain" : "text-ink-soft hover:bg-surface hover:text-ink"
+                  }`}
+                >
+                  <Icon name={i.icon} />
+                  {i.label}
+                </Link>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     );
   return (
-      <nav aria-label="Seções" className="fixed inset-x-0 bottom-0 z-20 border-t border-line bg-surface/95 pb-[env(safe-area-inset-bottom)] backdrop-blur lg:hidden">
-        <ul className="flex justify-around">
-          {items
-            .filter((i) => i.mobile !== false)
-            .map((i) => (
-              <li key={i.href}>
-                <Link href={i.href} aria-current={isActive(i.href) ? "page" : undefined} className={`flex flex-col items-center gap-0.5 px-3 py-2 text-[0.7rem] font-semibold ${isActive(i.href) ? "text-ink" : "text-ink-faint"}`}>
-                  <span aria-hidden="true" className="text-lg">{i.icon}</span>
+    <nav aria-label="Seções" className="fixed inset-x-3 bottom-3 z-30 pb-[env(safe-area-inset-bottom)] lg:hidden">
+      <ul className="glass flex justify-around rounded-[26px] px-1 py-1.5">
+        {items
+          .filter((i) => i.mobile !== false)
+          .map((i) => {
+            const on = isActive(i.href);
+            return (
+              <li key={i.href} className="flex-1">
+                <Link
+                  href={i.href}
+                  aria-current={on ? "page" : undefined}
+                  className={`flex flex-col items-center gap-0.5 rounded-[18px] px-1 py-1.5 text-[0.68rem] font-semibold transition-colors ${on ? "bg-gain-soft text-gain" : "text-ink-faint"}`}
+                >
+                  <Icon name={i.icon} size={20} />
                   {i.label}
                 </Link>
               </li>
-            ))}
-        </ul>
-      </nav>
+            );
+          })}
+      </ul>
+    </nav>
   );
 }

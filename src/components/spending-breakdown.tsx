@@ -3,13 +3,13 @@
 import { useState } from "react";
 
 /**
- * "Onde foi o dinheiro": barra segmentada fina (as 5 maiores categorias + Outras)
- * sobre uma lista ranqueada. Cada linha da lista traz a amostra de cor, então a lista
+ * "Para onde vai seu dinheiro": rosca com as 5 maiores categorias + Outras,
+ * ao lado de uma lista ranqueada. Cada linha da lista traz a amostra de cor, então a lista
  * faz o papel de legenda e de tabela (os valores ficam em texto, nunca só na cor).
  * Paleta categórica validada (ordem fixa, segura para daltonismo); "Outras" em cinza.
  */
-const SLOTS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4"];
-const OTHER = "#b4bccb";
+const SLOTS = ["#16a34a", "#3b82f6", "#f59e0b", "#a78bfa", "#ec6a9c"];
+const OTHER = "#b7c0bc";
 
 export type BreakdownRow = { key: string; name: string; icon: string; cents: number; prevCents: number };
 
@@ -25,40 +25,74 @@ export function SpendingBreakdown({ rows, prevLabel, limit = 10 }: { rows: Break
   const rest = rows.slice(SLOTS.length);
   const restCents = rest.reduce((s, r) => s + r.cents, 0);
   const segments = [
-    ...top.map((r, i) => ({ key: r.key, name: `${r.icon} ${r.name}`, cents: r.cents, color: SLOTS[i] })),
-    ...(restCents > 0 ? [{ key: "__outras", name: `Outras (${rest.length})`, cents: restCents, color: OTHER }] : []),
+    ...top.map((r, i) => ({ key: r.key, name: `${r.icon} ${r.name}`, label: r.name, cents: r.cents, color: SLOTS[i] })),
+    ...(restCents > 0 ? [{ key: "__outras", name: `Outras (${rest.length})`, label: `Outras (${rest.length})`, cents: restCents, color: OTHER }] : []),
   ];
   const colorOf = (key: string) => segments.find((s) => s.key === key)?.color ?? OTHER;
   const activeSeg = segments.find((s) => s.key === active) ?? null;
   const shown = rows.slice(0, limit);
 
+  const size = 176;
+  const stroke = 22;
+  const r = (size - stroke) / 2;
+  const c = 2 * Math.PI * r;
+  let acc = 0;
+
   return (
     <div className="grid gap-5">
-      <div>
-        <div
-          className="flex h-2 w-full gap-[2px] overflow-hidden rounded-full"
-          role="img"
-          aria-label={`Divisão dos gastos: ${segments.map((s) => `${s.name.replace(/^\S+\s/, "")} ${pctFmt((s.cents / total) * 100)}`).join(", ")}`}
-        >
-          {segments.map((s) => (
-            <div
-              key={s.key}
-              onMouseEnter={() => setActive(s.key)}
-              onMouseLeave={() => setActive(null)}
-              className="h-full transition-opacity first:rounded-l-full last:rounded-r-full"
-              style={{ width: `${(s.cents / total) * 100}%`, background: s.color, opacity: active && active !== s.key ? 0.35 : 1 }}
-            />
-          ))}
+      <div className="flex flex-col items-center gap-5 sm:flex-row sm:items-center sm:gap-7">
+        <div className="relative shrink-0" style={{ width: size, height: size }}>
+          <svg
+            width={size}
+            height={size}
+            viewBox={`0 0 ${size} ${size}`}
+            role="img"
+            aria-label={`Divisão dos gastos: ${segments.map((sg) => `${sg.label} ${pctFmt((sg.cents / total) * 100)}`).join(", ")}`}
+          >
+            <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--color-line)" strokeWidth={stroke} />
+            {segments.map((sg) => {
+              const len = (sg.cents / total) * c;
+              const gap = segments.length > 1 ? 3 : 0;
+              const el = (
+                <circle
+                  key={sg.key}
+                  cx={size / 2}
+                  cy={size / 2}
+                  r={r}
+                  fill="none"
+                  stroke={sg.color}
+                  strokeWidth={active === sg.key ? stroke + 4 : stroke}
+                  strokeDasharray={`${Math.max(len - gap, 0.5)} ${c}`}
+                  strokeDashoffset={-acc}
+                  transform={`rotate(-90 ${size / 2} ${size / 2})`}
+                  style={{ opacity: active && active !== sg.key ? 0.3 : 1, transition: "opacity .2s, stroke-width .2s", cursor: "pointer" }}
+                  onMouseEnter={() => setActive(sg.key)}
+                  onMouseLeave={() => setActive(null)}
+                />
+              );
+              acc += len;
+              return el;
+            })}
+          </svg>
+          <div className="pointer-events-none absolute inset-0 grid place-content-center px-6 text-center" aria-live="polite">
+            <p className="money text-[1.15rem] font-bold tracking-[-0.03em]">{brl(activeSeg ? activeSeg.cents : total)}</p>
+            <p className="truncate text-[0.72rem] text-ink-faint">{activeSeg ? `${activeSeg.label} · ${pctFmt((activeSeg.cents / total) * 100)}` : "gastos do mês"}</p>
+          </div>
         </div>
-        <p className="mt-2 h-5 text-xs text-ink-soft" aria-live="polite">
-          {activeSeg ? (
-            <>
-              <span className="font-semibold text-ink">{activeSeg.name}</span> · {brl(activeSeg.cents)} · {pctFmt((activeSeg.cents / total) * 100)} do total
-            </>
-          ) : (
-            "Passe o mouse ou toque numa categoria para destacar."
-          )}
-        </p>
+        <ul className="grid w-full gap-2.5 text-sm">
+          {segments.map((sg) => (
+            <li
+              key={sg.key}
+              className="grid grid-cols-[10px_1fr_auto] items-center gap-2.5"
+              onMouseEnter={() => setActive(sg.key)}
+              onMouseLeave={() => setActive(null)}
+            >
+              <span className="h-2.5 w-2.5 rounded-full" style={{ background: sg.color }} aria-hidden />
+              <span className="truncate text-ink-soft">{sg.label}</span>
+              <b className="tabular-nums">{pctFmt((sg.cents / total) * 100)}</b>
+            </li>
+          ))}
+        </ul>
       </div>
 
       <ul className="grid gap-1">
@@ -74,7 +108,7 @@ export function SpendingBreakdown({ rows, prevLabel, limit = 10 }: { rows: Break
               onMouseLeave={() => setActive(null)}
               onFocus={() => setActive(top.some((t) => t.key === r.key) ? r.key : "__outras")}
               onBlur={() => setActive(null)}
-              className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 rounded-xl px-2 py-2 outline-none transition-colors ${isActive ? "bg-paper" : ""}`}
+              className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 rounded-[14px] px-2.5 py-2 outline-none transition-colors ${isActive ? "bg-paper" : ""}`}
             >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorOf(r.key) }} aria-hidden />
               <span className="min-w-0 truncate text-sm">

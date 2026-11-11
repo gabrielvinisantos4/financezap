@@ -1,24 +1,72 @@
 @import "tailwindcss";
-@import "@fontsource-variable/archivo/wdth.css";
+@import "@fontsource-variable/plus-jakarta-sans";
 
+@custom-variant dark (&:where([data-theme="dark"], [data-theme="dark"] *));
+
+/*
+ * Sistema visual do FinanceZap: off-white limpo, vidro sutil, cantos generosos,
+ * verde como destaque. Todas as cores são tokens e trocam no tema escuro.
+ */
 @theme {
-  --font-sans: "Archivo Variable", ui-sans-serif, system-ui, sans-serif;
-  --color-ink: #1b2a4a;
-  --color-ink-soft: #4a5874;
-  --color-ink-faint: #8a94a8;
-  --color-paper: #f5f6f8;
+  --font-sans: "Plus Jakarta Sans Variable", ui-sans-serif, system-ui, sans-serif;
+  --color-ink: #0e1714;
+  --color-ink-soft: #4d5a55;
+  --color-ink-faint: #7b8782;
+  --color-paper: #f7f9f8;
   --color-surface: #ffffff;
-  --color-line: #dfe3ea;
-  --color-gain: #1e7a4c;
-  --color-gain-soft: #e3f2ea;
-  --color-loss: #b3261e;
-  --color-loss-soft: #f8e6e4;
-  --color-coin: #e2a336;
-  --color-coin-soft: #fbf0d9;
+  --color-line: #e7ebe9;
+  --color-gain: #16a34a;
+  --color-gain-soft: #e9f7ef;
+  --color-loss: #dc2626;
+  --color-loss-soft: #fdecec;
+  --color-coin: #f59e0b;
+  --color-coin-soft: #fef3dc;
+  --color-night: #0c1612;
+  --radius-card: 28px;
 }
 
 :root {
   color-scheme: light;
+  --glass: rgba(255, 255, 255, 0.7);
+  --glass-edge: rgba(255, 255, 255, 0.9);
+  --hair: rgba(15, 31, 24, 0.07);
+  --hair-strong: rgba(15, 31, 24, 0.12);
+  --halo: rgba(22, 163, 74, 0.07);
+  --shadow-sm: 0 1px 2px rgba(14, 23, 20, 0.04), 0 4px 14px -6px rgba(14, 23, 20, 0.07);
+  --shadow-md: 0 1px 2px rgba(14, 23, 20, 0.04), 0 18px 48px -18px rgba(14, 23, 20, 0.14);
+  --green-deep: #12843d;
+  --chart-grid: #edf0ee;
+  --chart-axis: #7b8782;
+  --chart-muted: #a3aea9;
+  --chart-tip: #ffffff;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --color-ink: #edf3f0;
+  --color-ink-soft: #a6b3ad;
+  --color-ink-faint: #75837d;
+  --color-paper: #07100c;
+  --color-surface: #111a16;
+  --color-line: rgba(255, 255, 255, 0.08);
+  --color-gain: #22c55e;
+  --color-gain-soft: rgba(34, 197, 94, 0.13);
+  --color-loss: #f87171;
+  --color-loss-soft: rgba(248, 113, 113, 0.13);
+  --color-coin: #fbbf24;
+  --color-coin-soft: rgba(245, 158, 11, 0.14);
+  --glass: rgba(18, 28, 24, 0.66);
+  --glass-edge: rgba(255, 255, 255, 0.06);
+  --hair: rgba(255, 255, 255, 0.07);
+  --hair-strong: rgba(255, 255, 255, 0.12);
+  --halo: rgba(34, 197, 94, 0.14);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3), 0 4px 14px -6px rgba(0, 0, 0, 0.45);
+  --shadow-md: 0 1px 2px rgba(0, 0, 0, 0.3), 0 18px 48px -18px rgba(0, 0, 0, 0.6);
+  --green-deep: #4ade80;
+  --chart-grid: rgba(255, 255, 255, 0.07);
+  --chart-axis: #75837d;
+  --chart-muted: #5d6b65;
+  --chart-tip: #111a16;
 }
 
 html {
@@ -29,20 +77,32 @@ html {
 
 body {
   font-family: var(--font-sans);
-  font-stretch: 100%;
   line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  background:
+    radial-gradient(1000px 560px at 85% -10%, var(--halo), transparent 60%),
+    var(--color-paper);
+  background-attachment: fixed;
+  transition:
+    background-color 300ms ease,
+    color 300ms ease;
 }
 
-/* Títulos usam a largura expandida da Archivo: é a assinatura visual do produto */
+h1,
+h2,
+h3 {
+  letter-spacing: -0.03em;
+}
+
+/* Títulos */
 .display {
-  font-stretch: 125%;
-  font-weight: 800;
-  letter-spacing: -0.02em;
-  line-height: 1.02;
+  font-weight: 700;
+  letter-spacing: -0.045em;
+  line-height: 1.04;
 }
 .wide {
-  font-stretch: 112%;
   font-weight: 650;
+  letter-spacing: -0.025em;
 }
 
 /* Todo valor em dinheiro alinha por coluna */
@@ -52,9 +112,13 @@ body {
 }
 
 :focus-visible {
-  outline: 3px solid var(--color-coin);
+  outline: 2px solid var(--color-gain);
   outline-offset: 2px;
-  border-radius: 4px;
+  border-radius: 8px;
+}
+
+::selection {
+  background: rgba(34, 197, 94, 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -67,10 +131,29 @@ body {
   }
 }
 
+@layer components {
+/* Vidro */
+.glass {
+  background: var(--glass);
+  backdrop-filter: blur(18px) saturate(1.5);
+  -webkit-backdrop-filter: blur(18px) saturate(1.5);
+  border: 1px solid var(--glass-edge);
+  box-shadow:
+    inset 0 0 0 1px var(--hair),
+    var(--shadow-sm);
+}
+.card {
+  border-radius: var(--radius-card);
+  background: var(--color-surface);
+  box-shadow:
+    inset 0 0 0 1px var(--hair),
+    var(--shadow-sm);
+}
+
 /* Formulários */
 .field {
   display: grid;
-  gap: 0.35rem;
+  gap: 0.4rem;
 }
 .field > span {
   font-size: 0.875rem;
@@ -79,56 +162,140 @@ body {
 }
 .input {
   width: 100%;
-  border: 1px solid var(--color-line);
+  height: 48px;
+  border: 0;
   background: var(--color-surface);
-  border-radius: 10px;
-  padding: 0.7rem 0.85rem;
+  border-radius: 14px;
+  padding: 0 1rem;
   font-size: 1rem;
   color: var(--color-ink);
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+  transition: box-shadow 160ms ease;
+}
+textarea.input {
+  height: auto;
+  padding: 0.75rem 1rem;
+}
+select.input {
+  appearance: none;
+  padding-right: 2.5rem;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none' stroke='%237b8782' stroke-width='1.6' stroke-linecap='round'%3E%3Cpath d='m3 4.5 3 3 3-3'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 1rem center;
+}
+.input::placeholder {
+  color: var(--color-ink-faint);
 }
 .input:focus {
   outline: none;
-  border-color: var(--color-ink);
-  box-shadow: 0 0 0 3px rgb(27 42 74 / 0.12);
+  box-shadow:
+    inset 0 0 0 1.5px var(--color-gain),
+    0 0 0 4px var(--color-gain-soft);
+}
+.input.border-loss {
+  box-shadow: inset 0 0 0 1.5px var(--color-loss);
 }
 
+/* Botões pill */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  height: 46px;
   border-radius: 999px;
-  padding: 0.7rem 1.3rem;
-  font-weight: 650;
-  font-stretch: 110%;
-  transition: background-color 0.15s, transform 0.1s;
+  padding: 0 1.4rem;
+  font-weight: 600;
+  font-size: 0.95rem;
+  white-space: nowrap;
+  transition:
+    background-color 0.18s,
+    transform 0.12s,
+    box-shadow 0.18s;
 }
 .btn:active {
-  transform: translateY(1px);
+  transform: scale(0.97);
 }
 .btn-primary {
-  background: var(--color-ink);
+  background: var(--color-gain);
   color: #fff;
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.25) inset,
+    0 8px 22px -10px rgba(22, 163, 74, 0.65);
 }
 .btn-primary:hover {
-  background: #26395f;
+  background: #12843d;
+}
+:root[data-theme="dark"] .btn-primary {
+  color: #04140a;
+}
+:root[data-theme="dark"] .btn-primary:hover {
+  background: #4ade80;
 }
 .btn-coin {
   background: var(--color-coin);
-  color: var(--color-ink);
+  color: #1f1300;
 }
 .btn-coin:hover {
-  background: #d6942a;
+  filter: brightness(0.95);
 }
 .btn-ghost {
-  background: transparent;
+  background: var(--color-surface);
   color: var(--color-ink);
-  border: 1px solid var(--color-line);
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
 }
 .btn-ghost:hover {
-  background: var(--color-surface);
+  background: var(--color-gain-soft);
 }
 .btn-danger {
   background: var(--color-loss);
   color: #fff;
+}
+
+}
+
+/* Gráficos do recharts seguem o tema */
+.recharts-cartesian-grid line {
+  stroke: var(--chart-grid);
+}
+.recharts-text {
+  fill: var(--chart-axis);
+}
+.recharts-default-tooltip {
+  background: var(--chart-tip) !important;
+  border: 0 !important;
+  border-radius: 14px !important;
+  box-shadow: var(--shadow-md);
+  color: var(--color-ink);
+}
+
+/* Ícones do botão de tema */
+.is-sun {
+  display: none;
+}
+:root[data-theme="dark"] .is-sun {
+  display: block;
+}
+:root[data-theme="dark"] .is-moon {
+  display: none;
+}
+
+@layer components {
+.theme-btn {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  border-radius: 999px;
+  color: var(--color-ink-soft);
+  background: var(--color-surface);
+  box-shadow: inset 0 0 0 1px var(--hair-strong);
+  transition:
+    color 160ms ease,
+    transform 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.theme-btn:hover {
+  color: var(--color-ink);
+  transform: rotate(-14deg);
+}
 }

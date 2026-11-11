@@ -3,6 +3,10 @@
  * entradas 6.500,00 − despesas 2.231,50 = saldo 4.268,50; as categorias somam as despesas.
  */
 import { LogoBars } from "./phone";
+import { Icon, type IconName } from "@/components/icons";
+export { Icon };
+import { Ring } from "@/components/ring";
+export { Ring };
 
 const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
@@ -23,94 +27,6 @@ export const LIMITS = [
 
 const MONTHS = ["Jun", "Jul", "Ago", "Set", "Out", "Nov"];
 const SALDO = [2100, 2640, 2480, 3180, 3605, 4268.5];
-
-type IconName = "home" | "swap" | "tag" | "gauge" | "calendar" | "bars" | "gear" | "wallet" | "up" | "down" | "piggy" | "fork" | "car" | "bag" | "fuel" | "cart" | "pill" | "cash";
-
-export function Icon({ name, size = 18 }: { name: IconName; size?: number }) {
-  const p: Record<IconName, React.ReactNode> = {
-    home: <path d="M4 11.5 12 5l8 6.5V19a1 1 0 0 1-1 1h-4v-5H9v5H5a1 1 0 0 1-1-1z" />,
-    swap: <path d="M7 7h12l-3-3M17 17H5l3 3" />,
-    tag: <path d="M3.5 12.5 11.5 4.5H19.5V12.5L11.5 20.5ZM15.5 8.5h.01" />,
-    gauge: (
-      <>
-        <circle cx="12" cy="12" r="8" />
-        <path d="M12 12 15 8" />
-      </>
-    ),
-    calendar: (
-      <>
-        <rect x="4" y="5.5" width="16" height="14" rx="3" />
-        <path d="M8 3.5v4M16 3.5v4M4 10h16" />
-      </>
-    ),
-    bars: <path d="M6 19v-6M12 19V6M18 19v-9" />,
-    gear: (
-      <>
-        <circle cx="12" cy="12" r="3" />
-        <path d="M12 3.5v2.5M12 18v2.5M3.5 12H6M18 12h2.5M6 6l1.8 1.8M16.2 16.2 18 18M6 18l1.8-1.8M16.2 7.8 18 6" />
-      </>
-    ),
-    wallet: (
-      <>
-        <rect x="3.5" y="6" width="17" height="13" rx="3" />
-        <path d="M16 12.5h.01M3.5 9.5h17" />
-      </>
-    ),
-    up: <path d="M12 19V5M6 11l6-6 6 6" />,
-    down: <path d="M12 5v14M6 13l6 6 6-6" />,
-    piggy: (
-      <>
-        <rect x="4" y="7" width="16" height="11" rx="5.5" />
-        <path d="M9 7V5.5M15 12.5h.01" />
-      </>
-    ),
-    fork: <path d="M8 3v8a2 2 0 0 0 2 2v8M6 3v5M10 3v5M16 21V3c-2 1-3 4-3 7h3" />,
-    car: (
-      <>
-        <path d="M5 16V12l2-5h10l2 5v4M5 16h14M5 16v2M19 16v2M3.5 11h2M18.5 11h2" />
-        <path d="M8 13.5h.01M16 13.5h.01" />
-      </>
-    ),
-    bag: <path d="M5 8h14l-1 12H6zM9 8V6.5a3 3 0 0 1 6 0V8" />,
-    fuel: <path d="M5 20V5a1 1 0 0 1 1-1h7a1 1 0 0 1 1 1v15M4 20h11M14 9h2l2 2v6a1.5 1.5 0 0 0 3 0V9l-3-3M7 8h5" />,
-    cart: <path d="M3.5 4.5h2l2.2 10.2a1.5 1.5 0 0 0 1.5 1.3h7.6a1.5 1.5 0 0 0 1.5-1.1L20 8H6.3M9.5 20h.01M17 20h.01" />,
-    pill: <path d="m10.5 20.5-7-7a4.9 4.9 0 0 1 7-7l7 7a4.9 4.9 0 0 1-7 7ZM7 10l7 7" />,
-    cash: (
-      <>
-        <rect x="3" y="6.5" width="18" height="11" rx="3" />
-        <circle cx="12" cy="12" r="2.5" />
-      </>
-    ),
-  };
-  return (
-    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-      {p[name]}
-    </svg>
-  );
-}
-
-export function Ring({ pct, size = 64, stroke = 6, color = "var(--green)" }: { pct: number; size?: number; stroke?: number; color?: string }) {
-  const r = (size - stroke) / 2;
-  const c = 2 * Math.PI * r;
-  return (
-    <svg className="fz-ring" width={size} height={size} viewBox={`0 0 ${size} ${size}`} aria-hidden="true">
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="var(--track)" strokeWidth={stroke} />
-      <circle
-        className="fz-ring-val"
-        cx={size / 2}
-        cy={size / 2}
-        r={r}
-        fill="none"
-        stroke={color}
-        strokeWidth={stroke}
-        strokeLinecap="round"
-        strokeDasharray={`${(Math.min(pct, 100) / 100) * c} ${c}`}
-        transform={`rotate(-90 ${size / 2} ${size / 2})`}
-        style={{ ["--len" as string]: `${c}` }}
-      />
-    </svg>
-  );
-}
 
 function LineChart() {
   const W = 560;

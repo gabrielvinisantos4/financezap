@@ -7,7 +7,7 @@ import { LogoBars, Phone } from "@/components/landing/phone";
 import { Dashboard, Icon, LIMITS, Ring } from "@/components/landing/dashboard";
 import { Ways } from "@/components/landing/ways";
 import { Arrow, Pricing } from "@/components/landing/pricing";
-import { THEME_BOOT, ThemeToggle } from "@/components/landing/theme";
+import { ThemeToggle } from "@/components/theme";
 
 export const dynamic = "force-dynamic";
 
@@ -63,8 +63,7 @@ export default async function Home() {
   }));
 
   return (
-    <div className="fz" data-theme="light" suppressHydrationWarning>
-      <script dangerouslySetInnerHTML={{ __html: THEME_BOOT }} />
+    <div className="fz">
       <Reveal />
 
       <header className="fz-nav">

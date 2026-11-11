@@ -24,7 +24,7 @@ export function CheckoutForm({ plans, initial }: { plans: P[]; initial?: string 
       <fieldset className="grid w-fit grid-cols-2 gap-1 rounded-full bg-paper p-1">
         <legend className="sr-only">Cobrança</legend>
         {(["monthly", "yearly"] as const).map((c) => (
-          <label key={c} className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold ${cycle === c ? "bg-ink text-white" : "text-ink-soft"}`}>
+          <label key={c} className={`cursor-pointer rounded-full px-4 py-1.5 text-sm font-semibold ${cycle === c ? "bg-surface text-ink shadow-sm" : "text-ink-soft"}`}>
             <input type="radio" name="cycle" value={c} checked={cycle === c} onChange={() => setCycle(c)} className="sr-only" />
             {c === "monthly" ? "Mensal" : "Anual"}
           </label>
@@ -34,10 +34,10 @@ export function CheckoutForm({ plans, initial }: { plans: P[]; initial?: string 
       <fieldset className="grid gap-3 sm:grid-cols-3">
         <legend className="mb-2 font-semibold">1. Escolha o plano</legend>
         {plans.map((p) => (
-          <label key={p.slug} className={`flex cursor-pointer flex-col rounded-2xl border-2 p-4 transition-colors ${plan === p.slug ? "border-ink bg-paper" : "border-line hover:border-ink-faint"}`}>
+          <label key={p.slug} className={`flex cursor-pointer flex-col rounded-[24px] bg-surface p-5 transition-shadow ${plan === p.slug ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
             <input type="radio" name="plan" value={p.slug} checked={plan === p.slug} onChange={() => setPlan(p.slug)} className="sr-only" />
-            <span className="wide text-lg">{p.name}</span>
-            <span className="money mt-1 text-xl font-semibold">{cycle === "monthly" ? p.monthly : p.yearly}<span className="text-sm font-normal text-ink-soft">{cycle === "monthly" ? "/mês" : "/ano"}</span></span>
+            <span className="text-lg font-semibold tracking-[-0.02em]">{p.name}</span>
+            <span className="money mt-1 text-[1.6rem] font-bold tracking-[-0.04em]">{cycle === "monthly" ? p.monthly : p.yearly}<span className="text-sm font-normal text-ink-soft">{cycle === "monthly" ? "/mês" : "/ano"}</span></span>
             {cycle === "yearly" && p.yearlySavings && <span className="text-xs font-semibold text-gain">{p.yearlySavings}</span>}
             <ul className="mt-3 grid gap-1 text-sm text-ink-soft">
               {p.features.slice(0, 4).map((f) => (
@@ -50,14 +50,14 @@ export function CheckoutForm({ plans, initial }: { plans: P[]; initial?: string 
 
       <fieldset className="grid gap-3 sm:grid-cols-2">
         <legend className="mb-2 font-semibold">2. Forma de pagamento</legend>
-        <label className={`cursor-pointer rounded-2xl border-2 p-4 ${method === "credit_card" ? "border-ink bg-paper" : "border-line hover:border-ink-faint"}`}>
+        <label className={`cursor-pointer rounded-[24px] bg-surface p-5 transition-shadow ${method === "credit_card" ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
           <input type="radio" name="method" value="credit_card" checked={method === "credit_card"} onChange={() => setMethod("credit_card")} className="sr-only" />
-          <span className="wide block">💳 Cartão de crédito</span>
+          <span className="block font-semibold">💳 Cartão de crédito</span>
           <span className="mt-1 block text-sm text-ink-soft">Cobrança automática {cycle === "monthly" ? "todo mês" : "todo ano"} no mesmo cartão. Acesso liberado assim que o cartão é aprovado.</span>
         </label>
-        <label className={`cursor-pointer rounded-2xl border-2 p-4 ${method === "pix" ? "border-ink bg-paper" : "border-line hover:border-ink-faint"}`}>
+        <label className={`cursor-pointer rounded-[24px] bg-surface p-5 transition-shadow ${method === "pix" ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
           <input type="radio" name="method" value="pix" checked={method === "pix"} onChange={() => setMethod("pix")} className="sr-only" />
-          <span className="wide block">⚡ Pix</span>
+          <span className="block font-semibold">⚡ Pix</span>
           <span className="mt-1 block text-sm text-ink-soft">Você paga pelo QR Code. A cada {cycle === "monthly" ? "mês" : "ano"} chega uma nova cobrança Pix no seu e-mail.</span>
         </label>
       </fieldset>
@@ -71,7 +71,7 @@ export function CheckoutForm({ plans, initial }: { plans: P[]; initial?: string 
       </div>
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">
-        <Submit className="btn btn-coin text-base" pendingText="Abrindo pagamento…">
+        <Submit className="btn btn-primary text-base" pendingText="Abrindo pagamento…">
           {method === "pix" ? "Gerar Pix" : "Pagar com cartão"} {selected ? `· ${cycle === "monthly" ? selected.monthly : selected.yearly}` : ""}
         </Submit>
         <p className="text-sm text-ink-soft">Você vai para a página segura do Asaas. Dados do cartão não passam pelo FinanceZap.</p>

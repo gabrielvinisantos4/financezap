@@ -1,10 +1,9 @@
 "use client";
 
-/** Alterna claro/escuro na página de vendas e lembra a escolha neste navegador. */
-export function ThemeToggle() {
+/** Alterna claro/escuro em todo o site e lembra a escolha neste navegador. */
+export function ThemeToggle({ className = "fz-theme" }: { className?: string }) {
   function toggle() {
-    const root = document.querySelector<HTMLElement>(".fz");
-    if (!root) return;
+    const root = document.documentElement;
     const next = root.dataset.theme === "dark" ? "light" : "dark";
     root.dataset.theme = next;
     try {
@@ -12,7 +11,7 @@ export function ThemeToggle() {
     } catch {}
   }
   return (
-    <button type="button" className="fz-theme" onClick={toggle} aria-label="Alternar tema claro ou escuro" title="Tema claro ou escuro">
+    <button type="button" className={className} onClick={toggle} aria-label="Alternar tema claro ou escuro" title="Tema claro ou escuro">
       <svg className="is-moon" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
         <path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z" />
       </svg>
@@ -23,6 +22,3 @@ export function ThemeToggle() {
     </button>
   );
 }
-
-/** Roda antes da pintura: escolha salva, senão o tema do aparelho. */
-export const THEME_BOOT = `(function(){try{var r=document.currentScript.parentElement;var t=localStorage.getItem("fz-theme");if(!t){t=window.matchMedia("(prefers-color-scheme: dark)").matches?"dark":"light"}r.dataset.theme=t}catch(e){}})();`;
