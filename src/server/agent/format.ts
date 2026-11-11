@@ -45,12 +45,14 @@ export function recordedReply(rows: Transaction[], category: { name: string; ico
 
 export function multiRecordedReply(items: { rows: Transaction[]; category: { name: string; icon: string } | null }[]): Reply {
   const lines = [`✅ ${items.length} lançamentos registrados!`, ""];
+  const sameDate = items.every((it) => it.rows[0].occurredOn === items[0].rows[0].occurredOn);
   for (const it of items) {
     const t = it.rows[0];
     const sign = t.kind === "income" ? "+" : "−";
-    lines.push(`${it.category?.icon ?? "•"} ${t.description} · ${sign}${formatBRL(it.rows.reduce((s, r) => s + r.amountCents, 0))}`);
+    const date = sameDate ? "" : ` · ${formatBR(t.occurredOn)}`;
+    lines.push(`${it.category?.icon ?? "•"} ${t.description} · ${sign}${formatBRL(it.rows.reduce((s, r) => s + r.amountCents, 0))}${date}`);
   }
-  lines.push("", `📅 Data: ${formatBR(items[0].rows[0].occurredOn)}`);
+  if (sameDate) lines.push("", `📅 Data: ${formatBR(items[0].rows[0].occurredOn)}`);
   return { text: lines.join("\n") };
 }
 

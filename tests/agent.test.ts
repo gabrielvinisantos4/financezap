@@ -44,6 +44,28 @@ describe("interpretação por regras (contingência)", () => {
     expect(i("Corrige o valor da última receita para 1.200 reais.")).toMatchObject({ intent: "correct", target: { reference: "last_income" }, changes: { amount: 1200 } });
     expect(i("gastei no mercado")).toMatchObject({ intent: "record", entries: [{ amount: null }] });
   });
+
+  it("separa vários lançamentos na mesma mensagem", () => {
+    const two = i("Recebi 800 da farmácia\nRecebi 796 do sindicato");
+    expect(two.intent).toBe("record");
+    expect(two.entries).toHaveLength(2);
+    expect(two.entries[0]).toMatchObject({ kind: "income", amount: 800, counterparty: "farmácia", description: "Farmácia" });
+    expect(two.entries[1]).toMatchObject({ kind: "income", amount: 796, counterparty: "sindicato", description: "Sindicato" });
+
+    expect(i("Gastei 50 no posto e paguei 120 de energia").entries).toMatchObject([
+      { kind: "expense", amount: 50, category: "combustivel" },
+      { kind: "expense", amount: 120, category: "agua-energia" },
+    ]);
+    expect(i("Gastei 50 no posto; recebi 300 do cliente").entries.map((e) => e.kind)).toEqual(["expense", "income"]);
+    // linha sem verbo herda o tipo da anterior
+    expect(i("Gastei 50 no posto\n85 no mercado").entries).toMatchObject([
+      { kind: "expense", amount: 50 },
+      { kind: "expense", amount: 85, category: "mercado" },
+    ]);
+    // nome com quebra de linha não é mais engolido pela linha seguinte
+    expect(i("Recebi 800 da farmácia \n").entries[0]).toMatchObject({ counterparty: "farmácia", description: "Farmácia" });
+    expect(i("Gastei 10 no a\nGastei 10 no b\nGastei 10 no c\nGastei 10 no d\nGastei 10 no e\nGastei 10 no f")).toMatchObject({ intent: "record", entries: [] });
+  });
 });
 
 describe("agente financeiro (ponta a ponta no banco)", () => {
@@ -56,6 +78,16 @@ describe("agente financeiro (ponta a ponta no banco)", () => {
     expect(r.reply.text).toContain("📅 Data: 24/10/2026");
     const s = await withUser(u.id, (tx) => periodSummary(tx, u.id, month));
     expect(s.expenseCents).toBe(5000);
+  });
+
+  it("registra e confirma todos os lançamentos de uma mensagem com várias linhas", async () => {
+    const u = await makeUser();
+    const r = await send(u.id, "Recebi 800 da farmácia\nRecebi 796 do sindicato");
+    expect(r.reply.text).toContain("✅ 2 lançamentos registrados!");
+    expect(r.reply.text).toContain("Farmácia · +R$ 800,00");
+    expect(r.reply.text).toContain("Sindicato · +R$ 796,00");
+    const s = await withUser(u.id, (tx) => periodSummary(tx, u.id, month));
+    expect(s.incomeCents).toBe(159600);
   });
 
   it("a mesma mensagem reprocessada não duplica o lançamento", async () => {

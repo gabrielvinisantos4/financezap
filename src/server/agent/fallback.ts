@@ -79,7 +79,8 @@ function capitalize(s: string) {
 
 /** Texto após "no/na/em/de" que não seja número/valor. */
 function extractPlace(original: string, preps: string[]): string | null {
-  const re = new RegExp(`\\b(?:${preps.join("|")})\\s+([\\p{L}][\\p{L}\\s'&.-]{1,40}?)(?=\\s+(?:no|na|em|com|pelo|pela|via|hoje|ontem|anteontem|dia|parcelad\\w*|de\\s+\\d|por\\s+\\d|\\d)|[,.!?]|$)`, "iu");
+  // Só espaços/tabs dentro do nome: quebra de linha separa lançamentos, não faz parte do nome.
+  const re = new RegExp(`\\b(?:${preps.join("|")})[ \\t]+([\\p{L}][\\p{L} \\t'&.-]{1,40}?)(?=\\s+(?:no|na|em|com|pelo|pela|via|hoje|ontem|anteontem|dia|parcelad\\w*|de\\s+\\d|por\\s+\\d|\\d)|[ \\t]*[,.!?;\\n]|[ \\t]*$)`, "iu");
   const m = original.match(re);
   if (!m) return null;
   const v = m[1].trim().replace(/\s+(reais|real)$/i, "");
@@ -127,6 +128,56 @@ function parseRecord(original: string, n: string, today: ISODate): Interpretatio
     entries: [entry],
     clarification: amount ? null : kind === "expense" ? "Qual foi o valor dessa despesa?" : "Qual foi o valor recebido?",
     confidence: amount ? 0.8 : 0.5,
+  });
+}
+
+export const MAX_ENTRIES_PER_MESSAGE = 5;
+
+const RECORD_VERB_START = "(?:gastei|paguei|comprei|torrei|abasteci|pagamos|gastamos|recebi|recebemos|entrou|entraram|ganhei|vendi|caiu|faturei)\\b";
+/** Separadores entre lançamentos: quebra de linha, ";" e ", "/" e " antes de um novo verbo. */
+const SEGMENT_SPLIT_RE = new RegExp(`\\s*(?:\\n|;)\\s*|\\s*(?:,|\\be\\b|\\btamb[eé]m\\b)\\s+(?=(?:tamb[eé]m\\s+)?${RECORD_VERB_START})`, "iu");
+
+/** Divide a mensagem em trechos, um por lançamento. */
+export function splitRecordSegments(original: string): string[] {
+  return original
+    .split(SEGMENT_SPLIT_RE)
+    .map((s) => s.replace(/^(?:e|tamb[eé]m)\s+/iu, "").trim())
+    .filter((s) => /[\p{L}\d]/u.test(s));
+}
+
+/**
+ * Registro com um ou mais lançamentos na mesma mensagem
+ * ("Recebi 800 da farmácia\nRecebi 796 do sindicato").
+ * Um trecho sem verbo mas com valor herda o tipo do anterior ("Gastei 50 no posto\n30 no mercado").
+ */
+function parseRecords(original: string, n: string, today: ISODate): Interpretation | null {
+  const segments = splitRecordSegments(original);
+  if (segments.length < 2) return parseRecord(original, n, today);
+
+  const parsed: Interpretation[] = [];
+  let lastKind: "income" | "expense" | null = null;
+  for (const seg of segments) {
+    let it = parseRecord(seg, normalize(seg), today);
+    if (!it && lastKind && extractAmount(seg) !== null) {
+      const inherited = `${lastKind === "income" ? "recebi" : "gastei"} ${seg}`;
+      it = parseRecord(inherited, normalize(inherited), today);
+    }
+    // Algum trecho não é lançamento: não arrisca dividir, interpreta a mensagem inteira.
+    if (!it) return parseRecord(original, n, today);
+    lastKind = it.entries[0].kind;
+    parsed.push(it);
+  }
+
+  if (parsed.length > MAX_ENTRIES_PER_MESSAGE) {
+    return emptyInterpretation("record", {
+      clarification: `Consigo registrar até ${MAX_ENTRIES_PER_MESSAGE} lançamentos por mensagem. Pode mandar o resto numa próxima mensagem?`,
+      confidence: 0.5,
+    });
+  }
+  return emptyInterpretation("record", {
+    entries: parsed.map((p) => p.entries[0]),
+    clarification: parsed.find((p) => p.clarification)?.clarification ?? null,
+    confidence: Math.min(...parsed.map((p) => p.confidence)),
   });
 }
 
@@ -247,7 +298,7 @@ export function interpretByRules(message: string, ctx: Pick<InterpretContext, "t
     parseDelete(original, n) ??
     parseCorrection(original, n) ??
     parseQuery(original, n) ??
-    parseRecord(original, n, ctx.today) ??
+    parseRecords(original, n, ctx.today) ??
     emptyInterpretation("unclear", { confidence: 0 })
   );
 }
