@@ -338,6 +338,23 @@ describe("contas fixas pelo WhatsApp", () => {
     expect((await send(u.id, "minhas contas fixas")).reply.text).toContain("ainda não tem contas fixas");
   });
 
+  it("apagar todos os lançamentos: pede confirmação e só apaga depois do sim", async () => {
+    const u = await makeUser();
+    await send(u.id, "gastei 50 no posto");
+    await send(u.id, "recebi 800 de um cliente");
+    expect(i("apaga todos os meus lançamentos")).toMatchObject({ intent: "delete", target: { reference: "all" } });
+    expect(i("zera tudo")).toMatchObject({ intent: "delete", target: { reference: "all" } });
+    const ask = await send(u.id, "apaga todos os meus lançamentos");
+    expect(ask.reply.text).toContain("todos os 2 lançamentos");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(2);
+    expect((await send(u.id, "não")).reply.text).toContain("cancelei");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(2);
+    await send(u.id, "apaga todos os meus lançamentos");
+    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 2 lançamentos");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
+    expect((await send(u.id, "apaga todos os meus lançamentos")).reply.text).toContain("não tem lançamentos");
+  });
+
   it("receita fixa: cadastra o social media, 'recebi o social media' dá baixa sem lançar em dobro", async () => {
     const u = await makeUser();
     // hoje é 24/10: cai dia 28 → já aparece como valor a receber

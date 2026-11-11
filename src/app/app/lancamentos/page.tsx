@@ -194,6 +194,11 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
         {page > 1 ? <Link href={qs({ pagina: String(page - 1) })} className="font-semibold">Página anterior</Link> : <span />}
         {hasMore && <Link href={qs({ pagina: String(page + 1) })} className="font-semibold">Próxima página</Link>}
       </div>
+      <div className="mt-8 flex justify-center">
+        <Link href="/app/conta#apagar-lancamentos" className="lg-btn inline-flex h-10 items-center gap-2 rounded-full px-4 text-sm font-semibold text-loss">
+          Apagar todos os lançamentos
+        </Link>
+      </div>
     </>
   );
 }

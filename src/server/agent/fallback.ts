@@ -223,6 +223,13 @@ function parseDelete(original: string, n: string): Interpretation | null {
   if (/(duas vezes|duplicad|repetid|em dobro)/.test(n) && /(registrei|lancei|anotei|ficou|esta|tem)/.test(n)) {
     return emptyInterpretation("delete", { target: { reference: "duplicate", kind: null, amount: null, description: null, date: null }, confidence: 0.8 });
   }
+  // "apaga todos os meus lançamentos", "zera tudo", "limpa todos os registros"
+  if (
+    /\b(apaga|apague|apagar|exclui|exclua|excluir|deleta|delete|remove|remova|remover|limpa|limpe|limpar|zera|zere|zerar)\b/.test(n) &&
+    (/\b(todos|todas)\b.*\b(lancamentos|gastos|registros|despesas|movimentacoes|dados)\b/.test(n) || /\b(zera|zere|zerar|limpa|limpe|limpar|apaga|apagar) (tudo|meus lancamentos|os lancamentos)\b/.test(n))
+  ) {
+    return emptyInterpretation("delete", { target: { reference: "all", kind: null, amount: null, description: null, date: null }, confidence: 0.85 });
+  }
   if (!/\b(apaga|apague|apagar|exclui|exclua|excluir|deleta|delete|remove|remova|remover|desfaz|desfazer)\b/.test(n)) return null;
   const kind: "income" | "expense" | null = /(receita|entrada|recebimento)/.test(n) ? "income" : /(gasto|despesa|compra)/.test(n) ? "expense" : null;
   const amount = /\d/.test(n) ? extractAmount(original) : null;

@@ -6,7 +6,7 @@ import { z } from "zod";
 import { eq } from "drizzle-orm";
 import { requireUser, endAllSessions } from "@/server/auth/session";
 import { db, withUser } from "@/server/db/client";
-import { users } from "@/server/db/schema";
+import { budgetAlerts, users } from "@/server/db/schema";
 import {
   archiveAccount,
   archiveCategory,
@@ -17,6 +17,7 @@ import {
   createRefund,
   createTransfer,
   deleteEntry,
+  deleteAllEntries,
   markPaid,
   updateEntry,
 } from "@/server/finance/engine";
@@ -285,6 +286,24 @@ export async function updateProfileAction(_: FormState, form: FormData): Promise
     revalidatePath("/app/conta");
     return { message: "Dados atualizados." };
   });
+}
+
+export async function deleteAllEntriesAction(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  if (String(form.get("confirm") ?? "").trim().toUpperCase() !== "APAGAR") return { error: "Digite APAGAR para confirmar." };
+  const ok = await verifyCredentials(user.email, String(form.get("password") ?? ""));
+  if (!ok) return { error: "Senha incorreta." };
+  const res = await guard(async () => {
+    const n = await withUser(user.id, async (tx) => {
+      const count = await deleteAllEntries(tx, user.id, "user");
+      // Os avisos de limite do mês voltam a valer para os próximos lançamentos
+      await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, user.id));
+      return count;
+    });
+    return { message: n ? `Pronto: ${n} ${n === 1 ? "lançamento apagado" : "lançamentos apagados"}. Contas, categorias, limites e contas fixas continuam cadastrados.` : "Você não tinha lançamentos para apagar." };
+  });
+  revalidatePath("/app", "layout");
+  return res;
 }
 
 export async function deleteAccountAction(_: FormState, form: FormData): Promise<FormState> {

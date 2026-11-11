@@ -2,7 +2,7 @@ import { appContext } from "@/server/app-context";
 import { PasswordInput } from "@/components/password-input";
 import { PageHeader, Panel } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/forms";
-import { deleteAccountAction, updateProfileAction } from "@/app/actions/app";
+import { deleteAccountAction, deleteAllEntriesAction, updateProfileAction } from "@/app/actions/app";
 import { logoutAction } from "@/app/actions/auth";
 
 export const metadata = { title: "Minha conta" };
@@ -43,6 +43,26 @@ export default async function AccountPage() {
             <p className="text-sm text-ink-soft">Baixe tudo o que o FinanceZap guarda sobre você: perfil, consentimentos, assinatura, contas, categorias, lançamentos e histórico de alterações.</p>
             <a href="/app/conta/exportar" className="btn btn-ghost mt-4">Baixar meus dados (JSON)</a>
           </Panel>
+          <section id="apagar-lancamentos" className="scroll-mt-24">
+            <Panel title="Apagar todos os lançamentos">
+              <p className="text-sm text-ink-soft">
+                Apaga de uma vez todos os gastos e recebimentos registrados, pelo WhatsApp ou pelo painel. Sua conta, a assinatura, o WhatsApp vinculado, as contas, categorias, limites e contas fixas continuam. Útil para começar do zero depois de testar.
+              </p>
+              <ActionForm action={deleteAllEntriesAction} className="mt-4 grid gap-3" resetOnSuccess>
+                <label className="field">
+                  <span>Digite APAGAR para confirmar</span>
+                  <input className="input" name="confirm" autoComplete="off" required />
+                </label>
+                <label className="field">
+                  <span>Sua senha</span>
+                  <PasswordInput className="input" name="password" autoComplete="current-password" required />
+                </label>
+                <Submit className="btn btn-danger w-fit" pendingText="Apagando…">
+                  Apagar todos os lançamentos
+                </Submit>
+              </ActionForm>
+            </Panel>
+          </section>
           <Panel title="Excluir conta">
             <p className="text-sm text-ink-soft">
               Cancela a assinatura, desvincula o WhatsApp e apaga definitivamente seus lançamentos, contas e categorias. Registros de pagamento podem ser mantidos pelo prazo exigido em lei, sem seus dados pessoais. Esta ação não pode ser desfeita.

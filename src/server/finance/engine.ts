@@ -447,6 +447,27 @@ export async function deleteEntry(
   return deleted;
 }
 
+/**
+ * Apaga todos os lançamentos da pessoa de uma vez (exclusão lógica, com histórico).
+ * Contas, categorias, limites e contas fixas continuam cadastrados.
+ */
+export async function deleteAllEntries(tx: Tx, userId: string, actor: Actor): Promise<number> {
+  const befores = await tx.select().from(transactions).where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
+  if (!befores.length) return 0;
+  const deleted = await tx
+    .update(transactions)
+    .set({ deletedAt: new Date(), version: sql`${transactions.version} + 1` })
+    .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)))
+    .returning();
+  const byId = new Map(befores.map((b) => [b.id, b]));
+  for (let i = 0; i < deleted.length; i += 500) {
+    await tx.insert(transactionHistory).values(
+      deleted.slice(i, i + 500).map((d) => ({ userId, transactionId: d.id, action: "delete" as const, actor, before: byId.get(d.id) ?? null, after: d, reason: "apagar todos os lançamentos" })),
+    );
+  }
+  return deleted.length;
+}
+
 export async function restoreEntry(tx: Tx, userId: string, id: string, actor: Actor) {
   const before = await getTransaction(tx, userId, id, { includeDeleted: true });
   if (!before.deletedAt) return before;

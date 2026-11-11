@@ -25,7 +25,7 @@ export const QUERY_TYPES = [
 
 export const PERIOD_TYPES = ["today", "yesterday", "this_week", "last_week", "this_month", "last_month", "month", "this_year", "last_n_days", "custom"] as const;
 export const PAYMENT_METHODS = ["pix", "dinheiro", "debito", "credito", "boleto", "transferencia"] as const;
-export const REFERENCE_TYPES = ["last", "last_expense", "last_income", "match", "duplicate"] as const;
+export const REFERENCE_TYPES = ["last", "last_expense", "last_income", "match", "duplicate", "all"] as const;
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 

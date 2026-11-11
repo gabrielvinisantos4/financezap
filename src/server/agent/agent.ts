@@ -1,10 +1,11 @@
 import { and, between, desc, eq, gt, isNotNull, isNull, sql } from "drizzle-orm";
 import { withUser, type Tx } from "../db/client";
-import { conversationTurns, pendingActions, recurringRules, transactions, users, type Category, type Transaction } from "../db/schema";
+import { budgetAlerts, conversationTurns, pendingActions, recurringRules, transactions, users, type Category, type Transaction } from "../db/schema";
 import {
   createEntry,
   createRecurringRule,
   deleteEntry,
+  deleteAllEntries,
   generateRecurring,
   getTransaction,
   listAccounts,
@@ -72,6 +73,7 @@ type PendingPayload =
   | { kind: "complete_entry"; entry: Entry; sourceMessageId: string; question: string }
   | { kind: "confirm_update"; txId: string; version: number; patch: EntryPatch; question: string }
   | { kind: "confirm_delete"; txId: string; version: number; wholeGroup: boolean; question: string }
+  | { kind: "confirm_delete_all"; count: number; question: string }
   | { kind: "choose_target"; candidates: { id: string; label: string }[]; next: "update" | "delete"; patch: EntryPatch | null; question: string };
 
 async function openPending(tx: Tx, userId: string, payload: PendingPayload, now: Date) {
@@ -745,6 +747,16 @@ async function prepareCorrection(userId: string, target: Target | null, changes:
 
 async function prepareDeletion(userId: string, target: Target | null, today: ISODate, now: Date): Promise<Reply> {
   return withUser(userId, async (tx) => {
+    if (target?.reference === "all") {
+      const [r] = await tx
+        .select({ c: sql<number>`count(*)::int` })
+        .from(transactions)
+        .where(and(eq(transactions.userId, userId), isNull(transactions.deletedAt)));
+      if (!r.c) return { text: "Você não tem lançamentos para apagar. 🙂" };
+      const question = `⚠️ Vou apagar *todos os ${r.c} ${r.c === 1 ? "lançamento" : "lançamentos"}* da sua conta (gastos e recebimentos).\n\nSuas contas, categorias, limites e contas fixas continuam cadastrados.\n\nConfirma? Isso não pode ser desfeito por aqui.`;
+      const p = await openPending(tx, userId, { kind: "confirm_delete_all", count: r.c, question }, now);
+      return { text: question, buttons: confirmButtons(p.id) };
+    }
     const { candidates, reason } = await resolveTargets(tx, userId, target, today);
     if (!candidates.length) {
       return { text: reason === "duplicate" ? "Não encontrei lançamentos repetidos recentes. Se quiser, me diga o valor do lançamento duplicado." : "Não encontrei esse lançamento. Me diga o valor ou a descrição dele." };
@@ -801,6 +813,11 @@ async function resolvePending(userId: string, pendingId: string, decision: "conf
       if (payload.kind === "confirm_update") {
         const after = await updateEntry(tx, userId, payload.txId, payload.patch, "agent", { expectedVersion: payload.version, reason: `whatsapp:${msg.messageId}` });
         return { text: `✅ Lançamento corrigido!\n\n${fmt.describeTx(after)}\n\nOs totais e relatórios já foram atualizados.` };
+      }
+      if (payload.kind === "confirm_delete_all") {
+        const n = await deleteAllEntries(tx, userId, "agent");
+        await tx.delete(budgetAlerts).where(eq(budgetAlerts.userId, userId));
+        return { text: `🗑️ Pronto! Apaguei ${n} ${n === 1 ? "lançamento" : "lançamentos"}.\n\nSua conta está zerada e pronta para começar de novo. É só me mandar o próximo gasto. 🙂` };
       }
       if (payload.kind === "confirm_delete") {
         const removed = await deleteEntry(tx, userId, payload.txId, "agent", { wholeInstallmentGroup: payload.wholeGroup, expectedVersion: payload.version, reason: `whatsapp:${msg.messageId}` });
