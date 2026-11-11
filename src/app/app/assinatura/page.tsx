@@ -2,7 +2,7 @@ import { desc, eq } from "drizzle-orm";
 import { appContext } from "@/server/app-context";
 import { db } from "@/server/db/client";
 import { payments } from "@/server/db/schema";
-import { currentSubscription, listActivePlans } from "@/server/billing/subscriptions";
+import { cardTrialFirstCharge, currentSubscription, listActivePlans } from "@/server/billing/subscriptions";
 import { getEntitlement, monthlyUsage } from "@/server/billing/entitlements";
 import { formatBRL } from "@/server/finance/money";
 import { integrations } from "@/server/config/env";
@@ -23,7 +23,7 @@ const STATUS: Record<string, [string, "gain" | "loss" | "coin" | "neutral"]> = {
 const PAY: Record<string, string> = { PENDING: "Aguardando", RECEIVED: "Pago", CONFIRMED: "Confirmado", OVERDUE: "Vencido", REFUNDED: "Estornado", RECEIVED_IN_CASH: "Pago" };
 
 const RETURN_MSG: Record<string, [string, "gain" | "coin"]> = {
-  processando: ["Recebemos seu pagamento no Asaas. Assim que o cartão for aprovado, o acesso é liberado automaticamente — costuma levar poucos segundos. Atualize esta página.", "gain"],
+  processando: ["Recebemos seus dados no Asaas. Assim que o cartão for aprovado, o acesso é liberado automaticamente — costuma levar poucos segundos. Atualize esta página.", "gain"],
   cancelado: ["Pagamento cancelado. Nenhuma cobrança foi feita. Você pode escolher outro plano ou forma de pagamento abaixo.", "coin"],
   expirado: ["O link de pagamento expirou. Gere um novo abaixo.", "coin"],
 };
@@ -31,17 +31,23 @@ const RETURN_MSG: Record<string, [string, "gain" | "coin"]> = {
 export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ plano?: string; pagamento?: string }> }) {
   const { plano, pagamento } = await searchParams;
   const { user } = await appContext();
-  const [sub, plans, ent, usage, history] = await Promise.all([
+  const [sub, plans, ent, usage, history, trialUntil] = await Promise.all([
     currentSubscription(user.id),
     listActivePlans(),
     getEntitlement(user.id),
     monthlyUsage(user.id),
     db().select().from(payments).where(eq(payments.userId, user.id)).orderBy(desc(payments.createdAt)).limit(12),
+    cardTrialFirstCharge(user.id),
   ]);
   const isTrial = sub?.provider === "manual";
   const canBuy = !sub || isTrial || ["canceled", "expired"].includes(sub.status) || (sub.status === "pending" && !ent.active) || (sub.status === "pending" && sub.paymentMethod === "credit_card");
   const notice = pagamento ? RETURN_MSG[pagamento] : undefined;
-  const pendingInvoice = history.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
+  const PAID = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
+  // Teste grátis com cartão: assinatura no Asaas liberada, mas nenhuma cobrança paga ainda
+  const cardTrial = sub?.provider === "asaas" && sub.paymentMethod === "credit_card" && ["active", "canceled"].includes(sub.status) && !history.some((p) => PAID.includes(p.status));
+  const firstCharge = cardTrial ? history.find((p) => p.status === "PENDING")?.dueDate ?? null : null;
+  const fmt = (iso: string) => iso.split("-").reverse().join("/");
+  const pendingInvoice = cardTrial ? undefined : history.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
 
   return (
     <>
@@ -52,7 +58,15 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
           {sub && (
             <Panel title={`Plano ${sub.plan.name}`} action={<Badge tone={STATUS[sub.status][1]}>{STATUS[sub.status][0]}</Badge>}>
               <p className="money text-lg">{isTrial ? "Período de teste grátis" : `${formatBRL(sub.priceCents)} ${sub.cycle === "monthly" ? "por mês" : "por ano"}${sub.paymentMethod === "credit_card" ? " · cartão de crédito" : sub.paymentMethod === "pix" ? " · Pix" : ""}`}</p>
-              {sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>}
+              {cardTrial ? (
+                <p className="mt-1 text-sm text-ink-soft">
+                  {sub.status === "canceled"
+                    ? `Teste grátis cancelado: você usa até ${sub.currentPeriodEnd?.toLocaleDateString("pt-BR", { timeZone: user.timezone }) ?? "o fim do teste"} e não será cobrado.`
+                    : `Teste grátis em andamento. A primeira cobrança no cartão é em ${firstCharge ? fmt(firstCharge) : sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd.getTime() - 86400_000).toLocaleDateString("pt-BR", { timeZone: user.timezone }) : "breve"}. Cancele antes disso e não paga nada.`}
+                </p>
+              ) : (
+                sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>
+              )}
               {pendingInvoice?.invoiceUrl && (
                 <a href={pendingInvoice.invoiceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-coin mt-4">
                   Pagar fatura de <Money cents={pendingInvoice.valueCents} />
@@ -67,7 +81,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               {(sub.status === "active" || sub.status === "past_due") && sub.provider === "asaas" && (
                 <details className="mt-5 border-t border-line pt-4">
                   <summary className="cursor-pointer text-sm font-semibold">Cancelar assinatura</summary>
-                  <p className="my-3 text-sm text-ink-soft">Você continua com acesso até o fim do período pago. Seus dados ficam disponíveis no painel até você excluir a conta.</p>
+                  <p className="my-3 text-sm text-ink-soft">{cardTrial ? "Você continua usando até o fim do teste e nenhuma cobrança é feita." : "Você continua com acesso até o fim do período pago."} Seus dados ficam disponíveis no painel até você excluir a conta.</p>
                   <ActionForm action={cancelSubscriptionAction}>
                     <Submit className="btn btn-danger w-fit" pendingText="Cancelando…">Confirmar cancelamento</Submit>
                   </ActionForm>
@@ -76,7 +90,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
             </Panel>
           )}
           {canBuy && (
-            <Panel title={isTrial ? "Assine para continuar depois do teste" : sub && sub.status !== "pending" ? "Assinar novamente" : "Escolha seu plano"}>
+            <Panel title={isTrial ? "Cadastre o cartão para continuar depois do teste" : trialUntil ? "Comece seu teste grátis" : sub && sub.status !== "pending" ? "Assinar novamente" : "Escolha seu plano"}>
               {!integrations.asaasConfigured() ? (
                 <p className="text-sm text-ink-soft">Os pagamentos ainda não foram ativados nesta instalação.</p>
               ) : plans.length === 0 ? (
@@ -84,6 +98,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
               ) : (
                 <CheckoutForm
                   initial={plano}
+                  trialUntil={trialUntil ? fmt(trialUntil) : null}
                   plans={plans.map((p) => {
                     const saving = p.priceMonthlyCents * 12 - p.priceYearlyCents;
                     return {

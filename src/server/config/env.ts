@@ -21,6 +21,8 @@ const schema = z.object({
   SIMULATOR_ENABLED: z.enum(["true", "false"]).default("false").transform((v) => v === "true"),
   AUTO_TRIAL_PLAN: z.string().optional().transform((v) => v || undefined),
   AUTO_TRIAL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
+  // Teste grátis com cartão cadastrado: a 1ª cobrança só acontece depois de N dias (0 = sem teste)
+  CARD_TRIAL_DAYS: z.coerce.number().int().min(0).max(90).default(15),
 
   // Segredo para HMAC de tokens/códigos (mín. 32 chars em produção)
   APP_SECRET: z.string().min(16),

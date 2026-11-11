@@ -68,6 +68,40 @@ async function ensureAsaasCustomer(userId: string, cpfCnpj: string): Promise<str
   return c.id;
 }
 
+/**
+ * Teste grátis com cartão: devolve a data (YYYY-MM-DD, São Paulo) da 1ª cobrança
+ * quando o cliente tem direito a ela, ou null para cobrar já.
+ *  - teste/cortesia manual em andamento: a cobrança começa quando ele acabar;
+ *  - nunca teve assinatura liberada: CARD_TRIAL_DAYS dias a partir de hoje;
+ *  - já usou teste ou já assinou antes: sem teste.
+ */
+export async function cardTrialFirstCharge(userId: string, now = new Date()): Promise<string | null> {
+  const today = todayIn("America/Sao_Paulo", now);
+  const rows = await db().select().from(subscriptions).where(eq(subscriptions.userId, userId));
+  const manual = rows.find((s) => s.provider === "manual" && s.status === "active" && s.currentPeriodEnd && s.currentPeriodEnd > now);
+  if (manual?.currentPeriodEnd) {
+    const end = todayIn("America/Sao_Paulo", manual.currentPeriodEnd);
+    return end > today ? end : null;
+  }
+  const days = env().CARD_TRIAL_DAYS;
+  if (days <= 0) return null;
+  const hadAccess = rows.some((s) => s.provider === "manual" || s.providerSubscriptionId !== null);
+  return hadAccess ? null : addDays(today, days);
+}
+
+/** Libera o teste quando o Asaas confirma que o cartão foi cadastrado e a 1ª cobrança é futura. */
+async function startCardTrial(sub: Subscription, firstDueDate: string | null | undefined) {
+  if (sub.status !== "pending" || sub.paymentMethod !== "credit_card" || !firstDueDate) return;
+  if (firstDueDate <= todayIn("America/Sao_Paulo")) return;
+  const periodEnd = new Date(`${addDays(firstDueDate, 1)}T03:00:00Z`);
+  await db().update(subscriptions).set({ status: "active", currentPeriodEnd: periodEnd, graceUntil: null }).where(and(eq(subscriptions.id, sub.id), eq(subscriptions.status, "pending")));
+  await db()
+    .update(subscriptions)
+    .set({ status: "expired", currentPeriodEnd: new Date() })
+    .where(and(eq(subscriptions.userId, sub.userId), eq(subscriptions.provider, "manual"), eq(subscriptions.status, "active")));
+  await opEvent("info", "billing.trial_started", "Teste grátis iniciado com cartão cadastrado", { firstDueDate }, sub.userId);
+}
+
 export async function startCheckout(userId: string, input: z.infer<typeof checkoutSchema>): Promise<CheckoutResult> {
   const plan = await getPlanBySlug(input.planSlug);
   if (!plan || !plan.active) throw new FinanceError("invalid", "Plano indisponível.");
@@ -125,11 +159,12 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
     }
 
     const back = `${env().APP_URL}/app/assinatura`;
+    const trialUntil = await cardTrialFirstCharge(userId);
     const checkout = await asaas.createRecurringCardCheckout({
       customer: customerId,
       value: price / 100,
       cycle,
-      nextDueDate: spDateTime(),
+      nextDueDate: trialUntil ? `${trialUntil} 12:00:00` : spDateTime(),
       itemName: `Plano ${plan.name}`,
       itemDescription: label,
       externalReference: sub.id,
@@ -321,6 +356,9 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
         .set({ status: "expired", currentPeriodEnd: new Date() })
         .where(and(eq(subscriptions.userId, sub.userId), eq(subscriptions.provider, "manual"), eq(subscriptions.status, "active")));
       if (sub.status !== "active") await opEvent("info", "billing.activated", "Assinatura ativada/regularizada por pagamento confirmado", { plan: sub.planId }, sub.userId);
+    } else if (ev.event === "PAYMENT_CREATED") {
+      // 1ª cobrança do cartão marcada para depois do teste: o cartão já foi validado
+      await startCardTrial(sub, payment.dueDate);
     } else if (ev.event === "PAYMENT_OVERDUE") {
       if (sub.status === "active" || sub.status === "pending") {
         await db()
@@ -350,6 +388,12 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
   if (ev.subscription) {
     const sub = await findSubscriptionByProviderId(ev.subscription.id, { customer: ev.subscription.customer, externalReference: ev.subscription.externalReference });
     if (!sub) return;
+    if (ev.event === "SUBSCRIPTION_CREATED" && sub.status === "pending" && sub.paymentMethod === "credit_card") {
+      // Confirma no Asaas (não confia só no corpo do evento)
+      const remote = env().ASAAS_API_KEY ? await asaas.getSubscription(ev.subscription.id).catch(() => null) : null;
+      if (remote && remote.status === "ACTIVE" && !remote.deleted) await startCardTrial(sub, remote.nextDueDate?.slice(0, 10));
+      return;
+    }
     if (ev.event === "SUBSCRIPTION_DELETED" || ev.event === "SUBSCRIPTION_INACTIVATED") {
       if (sub.status !== "canceled" && sub.status !== "expired") {
         await db().update(subscriptions).set({ status: "canceled", canceledAt: new Date() }).where(eq(subscriptions.id, sub.id));

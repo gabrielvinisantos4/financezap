@@ -16,7 +16,7 @@ export type PricingPlan = {
 
 const brl = (c: number) => (c / 100).toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
-export function Pricing({ plans }: { plans: PricingPlan[] }) {
+export function Pricing({ plans, trialDays = 0 }: { plans: PricingPlan[]; trialDays?: number }) {
   const [yearly, setYearly] = useState(false);
   const saving = plans.length ? Math.round((1 - plans[0].yearly / (plans[0].monthly * 12)) * 100) : 0;
   const featured = plans.length >= 3 ? 1 : plans.length - 1;
@@ -57,7 +57,7 @@ export function Pricing({ plans }: { plans: PricingPlan[] }) {
                 ))}
               </ul>
               <Link href={`/cadastro?plano=${p.slug}`} className={`fz-pill ${pro ? "fz-pill-green" : "fz-pill-soft"} fz-plan-cta`}>
-                Começar agora
+                {trialDays > 0 ? `Testar ${trialDays} dias grátis` : "Começar agora"}
                 {pro && <Arrow />}
               </Link>
             </article>

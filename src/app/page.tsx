@@ -8,6 +8,7 @@ import { Dashboard, Icon, LIMITS, Ring } from "@/components/landing/dashboard";
 import { Ways } from "@/components/landing/ways";
 import { Arrow, Pricing } from "@/components/landing/pricing";
 import { ThemeToggle } from "@/components/theme";
+import { env } from "@/server/config/env";
 
 export const dynamic = "force-dynamic";
 
@@ -21,11 +22,12 @@ const FAQ = [
   { q: "Como funcionam os limites?", a: "Você define quanto quer gastar por categoria ou no mês. Ao chegar em 80% e em 100%, o aviso vem junto da resposta, uma vez só." },
   { q: "E as contas fixas?", a: "Cadastre aluguel, luz ou internet com o valor e o dia. No vencimento chega um lembrete; responda “paguei” e ele dá baixa sem lançar em dobro." },
   { q: "Quem faz as contas, a inteligência artificial?", a: "Não. A IA só entende o que você escreveu. Totais, saldos e relatórios são calculados direto no banco de dados." },
+  { q: "Como funciona o teste grátis?", a: "Você cadastra o cartão e usa tudo de graça durante o teste. A primeira cobrança só acontece no fim dele. Se cancelar antes pelo painel, não paga nada." },
   { q: "Posso cancelar quando quiser?", a: "Sim, pelo painel. O acesso continua até o fim do período pago, e você pode exportar ou excluir seus dados." },
 ];
 
 const STEPS = [
-  { n: 1, icon: "user", title: "Crie sua conta", text: "Cadastro rápido. Pague com Pix ou cartão." },
+  { n: 1, icon: "user", title: "Crie sua conta", text: "Cadastro rápido. Teste grátis com cartão." },
   { n: 2, icon: "chat", title: "Conecte seu WhatsApp", text: "Mande o código do painel e pronto." },
   { n: 3, icon: "bars", title: "Comece a usar", text: "Escreva, fale ou envie comprovantes." },
 ] as const;
@@ -51,6 +53,8 @@ const LIMIT_ICON = { fork: "fork", car: "car", bag: "bag" } as const;
 export default async function Home() {
   const [plans, user] = await Promise.all([listActivePlans().catch(() => []), currentUser().catch(() => null)]);
   const panelHref = user ? (user.role === "user" ? "/app" : "/admin") : null;
+  const trial = env().CARD_TRIAL_DAYS;
+  const cta = trial > 0 ? `Testar ${trial} dias grátis` : "Começar agora";
   const pricing = plans.slice(0, 3).map((p) => ({
     id: p.id,
     slug: p.slug,
@@ -118,7 +122,7 @@ export default async function Home() {
             </p>
             <div className="fz-actions" data-r>
               <Link href="/cadastro" className="fz-pill fz-pill-green fz-pill-lg">
-                Começar agora
+                {cta}
                 <Arrow />
               </Link>
               <a href="#como-funciona" className="fz-pill fz-pill-ghost fz-pill-lg">
@@ -279,10 +283,10 @@ export default async function Home() {
         <section id="planos" className="fz-section fz-pricing" data-reveal>
           <header className="fz-head" data-r>
             <h2>Planos para o seu momento.</h2>
-            <p>Escolha o plano ideal e comece hoje mesmo. Cancele quando quiser.</p>
+            <p>{trial > 0 ? `Teste grátis por ${trial} dias. A primeira cobrança só vem depois, e você cancela quando quiser.` : "Escolha o plano ideal e comece hoje mesmo. Cancele quando quiser."}</p>
           </header>
           {pricing.length ? (
-            <Pricing plans={pricing} />
+            <Pricing plans={pricing} trialDays={trial} />
           ) : (
             <p className="fz-lead fz-center">Os planos estão sendo configurados. Crie sua conta para ser avisado quando as assinaturas abrirem.</p>
           )}
@@ -317,7 +321,7 @@ export default async function Home() {
             </h2>
             <p>Crie sua conta, conecte seu WhatsApp e registre seu primeiro gasto em poucos minutos.</p>
             <Link href="/cadastro" className="fz-pill fz-pill-green fz-pill-lg">
-              Começar agora
+              {cta}
               <Arrow />
             </Link>
           </div>

@@ -2,16 +2,17 @@ import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { closeDb, db } from "@/server/db/client";
 import { billingEvents, plans, subscriptions } from "@/server/db/schema";
-import { cancelSubscription, grantManualSubscription, handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
+import { cancelSubscription, cardTrialFirstCharge, grantManualSubscription, handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
 import { getEntitlement } from "@/server/billing/entitlements";
 import { setAsaasFetcher } from "@/server/billing/asaas";
 import { makeUser, resetDb } from "./helpers";
+import { addDays, todayIn } from "@/server/finance/dates";
 
 const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
 
 /** Simula a API do Asaas (sandbox) para os testes. */
 function fakeAsaas() {
-  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0, lastCheckout: null as null | Record<string, unknown> };
+  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0, lastCheckout: null as null | Record<string, unknown>, remoteNextDue: "2026-11-02" };
   setAsaasFetcher(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -24,7 +25,7 @@ function fakeAsaas() {
       return json({ id: "chk_TEST1" });
     }
     const subGet = url.match(/\/subscriptions\/([^/]+)$/);
-    if (method === "GET" && subGet) return json({ id: subGet[1], customer: "cus_TEST", status: "ACTIVE", value: 29.9, cycle: "MONTHLY", nextDueDate: "2026-11-02" });
+    if (method === "GET" && subGet) return json({ id: subGet[1], customer: "cus_TEST", status: "ACTIVE", value: 29.9, cycle: "MONTHLY", nextDueDate: state.remoteNextDue });
     if (method === "POST" && url.endsWith("/subscriptions")) {
       const id = `sub_TEST${++state.subSeq}`;
       state.payments.set("pay_1", { id: "pay_1", customer: "cus_TEST", subscription: id, status: "PENDING", value: 19.9, dueDate: "2026-10-24", invoiceUrl: "https://sandbox.asaas.com/i/pay_1" });
@@ -166,5 +167,39 @@ describe("assinaturas com Asaas", () => {
     await handleAsaasWebhook(JSON.stringify({ id: "evt_x9", event: "CHECKOUT_EXPIRED", checkout: { id: "chk_TEST1", customer: "cus_TEST", status: "EXPIRED" } }), TOKEN);
     const [s] = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
     expect(s.status).toBe("expired");
+  });
+
+  it("teste grátis com cartão: 1ª cobrança daqui a 15 dias, acesso liberado ao cadastrar o cartão, cancelar no teste não cobra", async () => {
+    const asaas = fakeAsaas();
+    const u = await makeUser();
+    const today = todayIn("America/Sao_Paulo");
+    const due = addDays(today, 15);
+    expect(await cardTrialFirstCharge(u.id)).toBe(due);
+    expect((await getEntitlement(u.id)).active).toBe(false); // sem cartão, sem acesso
+
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    expect(asaas.lastCheckout).toMatchObject({ subscription: { cycle: "MONTHLY", nextDueDate: `${due} 12:00:00` } });
+    expect((await getEntitlement(u.id)).active).toBe(false); // ainda não cadastrou o cartão
+
+    asaas.remoteNextDue = due;
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_t1", event: "SUBSCRIPTION_CREATED", subscription: { id: "sub_TRIAL", customer: "cus_TEST", status: "ACTIVE" } }), TOKEN);
+    expect(await getEntitlement(u.id)).toMatchObject({ active: true, planSlug: "basico" });
+    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.providerSubscriptionId, "sub_TRIAL"));
+    expect(sub.currentPeriodEnd?.toISOString()).toBe(`${addDays(due, 1)}T03:00:00.000Z`);
+    // quem já teve teste não ganha outro
+    expect(await cardTrialFirstCharge(u.id)).toBeNull();
+
+    await cancelSubscription(u.id);
+    expect(asaas.calls.some((c) => c.startsWith("DELETE /subscriptions/sub_TRIAL"))).toBe(true);
+    expect((await getEntitlement(u.id)).active).toBe(true); // usa até o fim do teste
+    expect((await getEntitlement(u.id, new Date(Date.now() + 40 * 86400_000))).active).toBe(false);
+  });
+
+  it("teste manual em andamento: a cobrança do cartão começa quando ele acaba", async () => {
+    fakeAsaas();
+    const u = await makeUser();
+    await grantManualSubscription(u.id, "basico", 10);
+    const end = todayIn("America/Sao_Paulo", new Date(Date.now() + 10 * 86400_000));
+    expect(await cardTrialFirstCharge(u.id)).toBe(end);
   });
 });
