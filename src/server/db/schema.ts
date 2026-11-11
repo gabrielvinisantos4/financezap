@@ -44,6 +44,8 @@ export const inboundStatus = pgEnum("inbound_status", ["queued", "processing", "
 export const usageType = pgEnum("usage_type", ["ai_call", "wa_inbound", "wa_outbound"]);
 export const dataRequestType = pgEnum("data_request_type", ["export", "delete"]);
 export const dataRequestStatus = pgEnum("data_request_status", ["requested", "processing", "done", "rejected"]);
+export const affiliateStatus = pgEnum("affiliate_status", ["active", "blocked"]);
+export const commissionStatus = pgEnum("commission_status", ["credited", "reversed"]);
 
 /* ------------------------------------------------------------------ */
 /* Identidade, sessões e consentimentos                                 */
@@ -62,11 +64,13 @@ export const users = pgTable(
     // Permissão explícita para ver dados pessoais no admin (além do papel)
     canViewPii: boolean("can_view_pii").notNull().default(false),
     blockedReason: text("blocked_reason"),
+    // Afiliado que trouxe este cliente (link /r/<código>); sem FK para não criar ciclo com affiliates
+    referredByAffiliateId: uuid("referred_by_affiliate_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`)],
+  (t) => [uniqueIndex("users_email_uq").on(sql`lower(${t.email})`), index("users_referred_by_idx").on(t.referredByAffiliateId)],
 );
 
 export const sessions = pgTable(
@@ -201,6 +205,8 @@ export const subscriptions = pgTable(
     providerSubscriptionId: text("provider_subscription_id"),
     providerCheckoutId: text("provider_checkout_id"),
     paymentMethod: text("payment_method"), // pix | credit_card | manual
+    // Afiliado que recebe o split desta assinatura (null = sem comissão)
+    affiliateId: uuid("affiliate_id"),
     currentPeriodEnd: timestamp("current_period_end", { withTimezone: true }),
     graceUntil: timestamp("grace_until", { withTimezone: true }),
     canceledAt: timestamp("canceled_at", { withTimezone: true }),
@@ -248,6 +254,43 @@ export const billingEvents = pgTable(
     createdAt: createdAt(),
   },
   (t) => [uniqueIndex("billing_events_uq").on(t.provider, t.providerEventId)],
+);
+
+/* ------------------------------------------------------------------ */
+/* Programa de afiliados                                                */
+/* ------------------------------------------------------------------ */
+export const affiliates = pgTable(
+  "affiliates",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    code: text("code").notNull(), // usado no link /r/<code>
+    walletId: text("wallet_id"), // carteira do Asaas que recebe o split
+    commissionBps: integer("commission_bps").notNull(), // 3000 = 30% do valor líquido
+    status: affiliateStatus("status").notNull().default("active"),
+    clicks: integer("clicks").notNull().default(0),
+    blockedReason: text("blocked_reason"),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("affiliates_user_uq").on(t.userId), uniqueIndex("affiliates_code_uq").on(sql`lower(${t.code})`)],
+);
+
+export const affiliateCommissions = pgTable(
+  "affiliate_commissions",
+  {
+    id: id(),
+    affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id, { onDelete: "cascade" }),
+    customerUserId: uuid("customer_user_id").references(() => users.id, { onDelete: "set null" }),
+    providerPaymentId: text("provider_payment_id").notNull(),
+    netCents: integer("net_cents").notNull(),
+    commissionCents: integer("commission_cents").notNull(),
+    status: commissionStatus("status").notNull().default("credited"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [uniqueIndex("affiliate_commissions_payment_uq").on(t.providerPaymentId), index("affiliate_commissions_affiliate_idx").on(t.affiliateId)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -535,3 +578,6 @@ export type Subscription = typeof subscriptions.$inferSelect;
 export type PendingAction = typeof pendingActions.$inferSelect;
 
 export type Budget = typeof budgets.$inferSelect;
+
+export type Affiliate = typeof affiliates.$inferSelect;
+export type AffiliateCommission = typeof affiliateCommissions.$inferSelect;

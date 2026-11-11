@@ -23,6 +23,8 @@ const schema = z.object({
   AUTO_TRIAL_DAYS: z.coerce.number().int().min(1).max(90).default(30),
   // Teste grátis com cartão cadastrado: a 1ª cobrança só acontece depois de N dias (0 = sem teste)
   CARD_TRIAL_DAYS: z.coerce.number().int().min(0).max(90).default(15),
+  // Programa de afiliados: % do valor líquido de cada cobrança paga, via split do Asaas
+  AFFILIATE_COMMISSION_PCT: z.coerce.number().min(0).max(90).default(30),
 
   // Segredo para HMAC de tokens/códigos (mín. 32 chars em produção)
   APP_SECRET: z.string().min(16),

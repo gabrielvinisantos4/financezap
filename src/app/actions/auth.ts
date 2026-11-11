@@ -1,7 +1,8 @@
 "use server";
 
 import { redirect } from "next/navigation";
-import { headers } from "next/headers";
+import { cookies, headers } from "next/headers";
+import { attachReferral, REF_COOKIE } from "@/server/affiliates/affiliates";
 import { createUser, signupSchema, verifyCredentials } from "@/server/auth/users";
 import { endSession, startSession } from "@/server/auth/session";
 import { rateLimit } from "@/server/security/rate-limit";
@@ -32,11 +33,13 @@ export async function signupAction(_: FormState, form: FormData): Promise<FormSt
   try {
     const user = await createUser(parsed.data, { ip });
     await applySignupPerks(user.id, user.email);
+    await attachReferral(user.id, (await cookies()).get(REF_COOKIE)?.value).catch(() => undefined);
     await startSession(user.id);
   } catch (err) {
     if (err instanceof FinanceError) return { error: err.userMessage };
     throw err;
   }
+  if (form.get("affiliate") === "1") redirect("/app/afiliados");
   const plan = String(form.get("plan") ?? "");
   if (env().AUTO_TRIAL_PLAN && !plan) redirect(env().SIMULATOR_ENABLED ? "/app/simulador" : "/app/whatsapp");
   redirect(plan ? `/app/assinatura?plano=${encodeURIComponent(plan)}` : "/app/assinatura");
@@ -53,7 +56,8 @@ export async function loginAction(_: FormState, form: FormData): Promise<FormSta
   if (!user) return { error: "E-mail ou senha incorretos." };
   if (user.status === "deleted") return { error: "E-mail ou senha incorretos." };
   await startSession(user.id);
-  redirect(user.role === "user" ? "/app" : "/admin");
+  const back = String(form.get("back") ?? "");
+  redirect(/^\/app(\/[a-z-]*)?$/.test(back) ? back : user.role === "user" ? "/app" : "/admin");
 }
 
 export async function logoutAction() {

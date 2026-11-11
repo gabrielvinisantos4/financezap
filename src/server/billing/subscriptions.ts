@@ -7,7 +7,8 @@ import { safeEqual } from "../security/crypto";
 import { addDays, addMonths, todayIn } from "../finance/dates";
 import { FinanceError } from "../finance/errors";
 import { opEvent } from "../ops/events";
-import { asaas, AsaasError, checkoutUrl, type AsaasPayment } from "./asaas";
+import { asaas, AsaasError, checkoutUrl, type AsaasPayment, type AsaasSplit } from "./asaas";
+import { ensureRemoteSplit, recordCommission, reverseCommission, splitForCustomer } from "../affiliates/affiliates";
 
 export async function listActivePlans(): Promise<Plan[]> {
   return db().select().from(plans).where(eq(plans.active, true)).orderBy(asc(plans.sortOrder));
@@ -133,24 +134,43 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
     throw new FinanceError("invalid", "Não foi possível iniciar o pagamento. Confira o CPF/CNPJ e tente novamente.");
   }
 
+  // Cliente indicado por afiliado com carteira cadastrada: a comissão vai por split do Asaas
+  const referral = await splitForCustomer(userId);
+
   // Assinatura local primeiro (pending): o id dela vai como externalReference
   const [sub] = await db()
     .insert(subscriptions)
-    .values({ userId, planId: plan.id, cycle: input.cycle, status: "pending", priceCents: price, provider: "asaas", providerCustomerId: customerId, paymentMethod: input.method })
+    .values({ userId, planId: plan.id, cycle: input.cycle, status: "pending", priceCents: price, provider: "asaas", providerCustomerId: customerId, paymentMethod: input.method, affiliateId: referral?.affiliateId ?? null })
     .returning();
+
+  /** Se o Asaas recusar o split (carteira inválida), segue sem ele: o cliente não pode ficar travado. */
+  async function withSplit<T>(fn: (split: AsaasSplit[] | undefined) => Promise<T>): Promise<T> {
+    if (!referral) return fn(undefined);
+    try {
+      return await fn(referral.split);
+    } catch (err) {
+      if (!(err instanceof AsaasError) || !/split|wallet|carteira/i.test(err.message)) throw err;
+      await opEvent("warn", "affiliate.split_rejected", "Asaas recusou o split do afiliado; cobrança criada sem comissão", { error: err.message.slice(0, 300) }, userId);
+      await db().update(subscriptions).set({ affiliateId: null }).where(eq(subscriptions.id, sub.id));
+      return fn(undefined);
+    }
+  }
 
   const cycle = input.cycle === "monthly" ? "MONTHLY" : "YEARLY";
   const label = `${env().APP_NAME} ${plan.name} (${input.cycle === "monthly" ? "mensal" : "anual"})`;
   try {
     if (input.method === "pix") {
-      const remote = await asaas.createPixSubscription({
-        customer: customerId,
-        value: price / 100,
-        nextDueDate: todayIn(user.timezone),
-        cycle,
-        description: label,
-        externalReference: sub.id,
-      });
+      const remote = await withSplit((split) =>
+        asaas.createPixSubscription({
+          customer: customerId,
+          value: price / 100,
+          nextDueDate: todayIn(user.timezone),
+          cycle,
+          description: label,
+          externalReference: sub.id,
+          ...(split ? { split } : {}),
+        }),
+      );
       await db().update(subscriptions).set({ providerSubscriptionId: remote.id }).where(eq(subscriptions.id, sub.id));
       const list = await asaas.listSubscriptionPayments(remote.id).catch(() => ({ data: [] as AsaasPayment[] }));
       const first = list.data[0];
@@ -160,7 +180,8 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
 
     const back = `${env().APP_URL}/app/assinatura`;
     const trialUntil = await cardTrialFirstCharge(userId);
-    const checkout = await asaas.createRecurringCardCheckout({
+    const checkout = await withSplit((splits) => asaas.createRecurringCardCheckout({
+      splits,
       customer: customerId,
       value: price / 100,
       cycle,
@@ -171,7 +192,7 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
       successUrl: `${back}?pagamento=processando`,
       cancelUrl: `${back}?pagamento=cancelado`,
       expiredUrl: `${back}?pagamento=expirado`,
-    });
+    }));
     await db().update(subscriptions).set({ providerCheckoutId: checkout.id }).where(eq(subscriptions.id, sub.id));
     return { redirectUrl: checkoutUrl(checkout.id, checkout.link), subscriptionId: sub.id };
   } catch (err) {
@@ -301,6 +322,8 @@ async function findSubscriptionByProviderId(providerSubscriptionId: string, hint
   if (!local) return null;
   const [linked] = await db().update(subscriptions).set({ providerSubscriptionId }).where(eq(subscriptions.id, local.id)).returning();
   await opEvent("info", "billing.subscription_linked", "Assinatura do Asaas vinculada", { method: local.paymentMethod }, local.userId);
+  // Assinatura nascida no Checkout: confirma que o split do afiliado foi junto
+  if (linked.affiliateId) await ensureRemoteSplit(linked);
   return linked;
 }
 
@@ -355,6 +378,7 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
         .update(subscriptions)
         .set({ status: "expired", currentPeriodEnd: new Date() })
         .where(and(eq(subscriptions.userId, sub.userId), eq(subscriptions.provider, "manual"), eq(subscriptions.status, "active")));
+      await recordCommission(sub, payment);
       if (sub.status !== "active") await opEvent("info", "billing.activated", "Assinatura ativada/regularizada por pagamento confirmado", { plan: sub.planId }, sub.userId);
     } else if (ev.event === "PAYMENT_CREATED") {
       // 1ª cobrança do cartão marcada para depois do teste: o cartão já foi validado
@@ -368,6 +392,7 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
         await opEvent("warn", "billing.overdue", "Pagamento em atraso", undefined, sub.userId);
       }
     } else if (["PAYMENT_REFUNDED", "PAYMENT_CHARGEBACK_REQUESTED", "PAYMENT_CHARGEBACK_DISPUTE", "PAYMENT_DELETED"].includes(ev.event)) {
+      await reverseCommission(payment.id);
       // Estorno/chargeback: se era o pagamento que liberou o período atual, suspende
       if (sub.status === "active" && ev.event !== "PAYMENT_DELETED") {
         await db().update(subscriptions).set({ status: "past_due", graceUntil: null, currentPeriodEnd: new Date() }).where(eq(subscriptions.id, sub.id));

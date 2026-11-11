@@ -36,6 +36,17 @@ export default function Terms() {
       <h2>Uso adequado</h2>
       <p>É proibido usar o serviço para fins ilícitos, tentar acessar dados de outros clientes, sobrecarregar o sistema ou contornar limites do plano. Podemos suspender contas que violem estes termos.</p>
 
+      <h2 id="afiliados">Programa de afiliados</h2>
+      <ul>
+        <li>Qualquer pessoa maior de idade pode se cadastrar como afiliado, mesmo sem ser assinante, e recebe um link próprio de indicação.</li>
+        <li>Quem entra pelo link e cria conta em até 60 dias fica ligado ao afiliado. Vale o último link usado antes do cadastro.</li>
+        <li>O afiliado recebe o percentual informado no painel de afiliados (hoje, 30%) sobre o valor líquido, já descontada a taxa do gateway, de cada mensalidade efetivamente paga pelo indicado, enquanto ele continuar assinante.</li>
+        <li>O pagamento é feito automaticamente pelo split do Asaas, direto na conta Asaas do afiliado, sem necessidade de transferência manual. Sem a carteira (Wallet ID) cadastrada, não há como repassar a comissão; as mensalidades pagas antes do cadastro da carteira não geram comissão retroativa.</li>
+        <li>Estornos, chargebacks e cancelamentos desfazem a comissão do pagamento correspondente.</li>
+        <li>Não é permitido indicar a si mesmo, criar contas falsas, fazer spam, prometer o que o serviço não faz ou anunciar usando a marca FinanceZap de forma enganosa. Nesses casos o afiliado pode ser suspenso e as comissões ligadas à fraude, canceladas.</li>
+        <li>O percentual e as regras podem mudar para novas indicações, com aviso prévio no painel. O afiliado é responsável pelos tributos sobre o que recebe.</li>
+      </ul>
+
       <h2>Disponibilidade</h2>
       <p>O serviço depende de terceiros (Meta/WhatsApp, provedores de IA, hospedagem e pagamentos) e pode ficar indisponível temporariamente. Trabalhamos para manter o serviço no ar e corrigir falhas com rapidez, mas não garantimos funcionamento ininterrupto. Como os valores exibidos vêm do que você registra, confira as informações antes de tomar decisões financeiras com base nelas.</p>
 

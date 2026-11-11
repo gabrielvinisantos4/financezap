@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { href: "/app/relatorios", label: "Relatórios", icon: "bars", mobile: false },
   { href: "/app/categorias", label: "Categorias", icon: "tag", mobile: false },
   { href: "/app/assinatura", label: "Assinatura", icon: "star", mobile: false },
+  { href: "/app/afiliados", label: "Afiliados", icon: "users", mobile: false },
   { href: "/app/conta", label: "Conta", icon: "user", mobile: false },
 ];
 

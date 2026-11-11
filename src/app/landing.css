@@ -1976,3 +1976,37 @@ html.js .fz [data-reveal]:not(.is-in) .fz-ring-val {
     transition: none;
   }
 }
+
+/* ---------- Página de afiliados ---------- */
+.fz-aff-hero {
+  padding-top: clamp(120px, 16vw, 170px);
+}
+.fz-aff-hero .fz-head {
+  max-width: 760px;
+  margin-inline: auto;
+}
+.fz-aff-hero h1 {
+  font-size: clamp(2.3rem, 5.4vw, 4rem);
+  line-height: 1.04;
+  letter-spacing: -0.045em;
+  margin: 18px 0 14px;
+}
+.fz-aff-hero h1 em {
+  font-style: normal;
+  color: var(--green);
+}
+.fz-aff-hero .fz-actions {
+  justify-content: center;
+  margin-top: 26px;
+}
+.fz-aff-earn .fz-step {
+  justify-content: center;
+  text-align: center;
+}
+.fz-aff-value {
+  display: block;
+  font-size: clamp(1.6rem, 3vw, 2.2rem) !important;
+  letter-spacing: -0.04em;
+  color: var(--green);
+  margin: 4px 0;
+}
