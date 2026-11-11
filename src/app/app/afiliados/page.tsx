@@ -1,9 +1,10 @@
 import { appContext } from "@/server/app-context";
-import { affiliateDashboard, getAffiliateByUser, suggestCode } from "@/server/affiliates/affiliates";
+import { affiliateDashboard, getAffiliateByUser, listPayoutsForAffiliate, maskPixKey, pixBalance, suggestCode } from "@/server/affiliates/affiliates";
 import { env } from "@/server/config/env";
 import { listActivePlans } from "@/server/billing/subscriptions";
 import { ActionForm, Submit } from "@/components/forms";
-import { joinAffiliateAction, saveWalletAction } from "@/app/actions/affiliates";
+import { joinAffiliateAction, savePixAction, saveWalletAction } from "@/app/actions/affiliates";
+import { PayoutTabs } from "@/components/payout-tabs";
 import { Badge, Empty, Money, PageHeader, Panel, Stat } from "@/components/ui";
 import { CopyLink } from "@/components/copy-link";
 
@@ -65,7 +66,11 @@ export default async function AffiliatesPage() {
     );
   }
 
-  const d = await affiliateDashboard(aff);
+  const [d, bal, payouts] = await Promise.all([affiliateDashboard(aff), pixBalance(aff.id), listPayoutsForAffiliate(aff.id)]);
+  const usesPix = aff.payoutMethod === "pix";
+  const ready = usesPix ? Boolean(aff.pixKey) : Boolean(aff.walletId);
+  const minPix = env().AFFILIATE_PIX_MIN_CENTS;
+  const PAYOUT_LABEL = { awaiting_approval: "Em preparação", processing: "Enviando", paid: "Pago", failed: "Falhou (volta no próximo)", canceled: "Cancelado" } as const;
   const url = `${env().APP_URL.replace(/\/$/, "")}/r/${aff.code}`;
   return (
     <>
@@ -74,9 +79,9 @@ export default async function AffiliatesPage() {
       {aff.status === "blocked" && (
         <p className="mb-6 rounded-[16px] bg-loss-soft px-4 py-3 text-sm text-ink">Seu link de afiliado está suspenso{aff.blockedReason ? `: ${aff.blockedReason}` : "."} Fale com {`contato@agentefinancezap.com.br`}.</p>
       )}
-      {!aff.walletId && aff.status === "active" && (
+      {!ready && aff.status === "active" && (
         <p className="mb-6 rounded-[16px] bg-coin-soft px-4 py-3 text-sm text-ink">
-          <b>Falta cadastrar sua carteira do Asaas.</b> Sem ela, as comissões não têm para onde ir. Quem assinar antes passa a gerar comissão assim que você cadastrar.
+          <b>Falta dizer onde você quer receber.</b> Cadastre sua conta Asaas ou uma chave Pix em “Onde você recebe”. Quem assinar antes passa a gerar comissão assim que você cadastrar.
         </p>
       )}
 
@@ -97,24 +102,72 @@ export default async function AffiliatesPage() {
 
         <Panel title="Onde você recebe">
           <div className="grid gap-4 text-sm text-ink-soft">
-            {aff.walletId ? (
-              <p>
-                Carteira cadastrada: <span className="font-mono text-ink">{aff.walletId.slice(0, 8)}…{aff.walletId.slice(-4)}</span>. Sua parte cai direto na sua conta do Asaas a cada pagamento confirmado.
-              </p>
-            ) : (
-              <ol className="grid gap-2">
-                <li>1. Crie uma conta grátis no <a href="https://www.asaas.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-gain underline-offset-2 hover:underline">Asaas</a> (pode ser como pessoa física).</li>
-                <li>2. No Asaas, abra <b className="text-ink">Integrações</b> (no menu da sua conta) e copie o <b className="text-ink">Wallet ID</b>.</li>
-                <li>3. Cole aqui embaixo e salve.</li>
-              </ol>
+            <p>
+              {usesPix
+                ? aff.pixKey
+                  ? <>Agora: <b className="text-ink">Pix</b> na chave {maskPixKey(aff.pixKeyType, aff.pixKey)}. O pagamento sai uma vez por mês, a partir de <Money cents={minPix} />.</>
+                  : "Escolha como quer receber."
+                : aff.walletId
+                  ? <>Agora: <b className="text-ink">conta Asaas</b> (carteira {aff.walletId.slice(0, 8)}…{aff.walletId.slice(-4)}). Sua parte cai na hora de cada pagamento.</>
+                  : "Escolha como quer receber."}
+            </p>
+            <PayoutTabs
+              initial={usesPix ? "pix" : "asaas"}
+              asaas={
+                <div className="grid gap-3">
+                  <ol className="grid gap-1.5">
+                    <li>1. Crie uma conta grátis no <a href="https://www.asaas.com" target="_blank" rel="noopener noreferrer" className="font-semibold text-gain underline-offset-2 hover:underline">Asaas</a> (pode ser pessoa física).</li>
+                    <li>2. Abra <b className="text-ink">Integrações</b> e copie o <b className="text-ink">Wallet ID</b>.</li>
+                    <li>3. Cole aqui. Se quiser, no Asaas você liga o saque automático para o seu banco.</li>
+                  </ol>
+                  <ActionForm action={saveWalletAction}>
+                    <label className="field">
+                      <span>Wallet ID do Asaas</span>
+                      <input className="input font-mono" name="walletId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autoComplete="off" required />
+                    </label>
+                    <Submit pendingText="Salvando…" className="btn btn-primary w-fit">Receber pelo Asaas</Submit>
+                  </ActionForm>
+                </div>
+              }
+              pix={
+                <div className="grid gap-3">
+                  <p>Sem precisar de conta no Asaas. As comissões se juntam e, uma vez por mês, mandamos um Pix para a sua chave (mínimo de <Money cents={minPix} />; o que faltar passa para o mês seguinte).</p>
+                  <ActionForm action={savePixAction}>
+                    <label className="field">
+                      <span>Tipo de chave</span>
+                      <select className="input" name="type" defaultValue={aff.pixKeyType ?? "CPF"}>
+                        <option value="CPF">CPF</option>
+                        <option value="CNPJ">CNPJ</option>
+                        <option value="EMAIL">E-mail</option>
+                        <option value="PHONE">Celular</option>
+                        <option value="EVP">Chave aleatória</option>
+                      </select>
+                    </label>
+                    <label className="field">
+                      <span>Chave Pix</span>
+                      <input className="input" name="key" autoComplete="off" required />
+                    </label>
+                    <Submit pendingText="Salvando…" className="btn btn-primary w-fit">Receber por Pix</Submit>
+                  </ActionForm>
+                </div>
+              }
+            />
+            {usesPix && (
+              <div className="grid gap-2 rounded-[16px] bg-paper px-4 py-3">
+                <p>Disponível para o próximo Pix: <b className="text-ink"><Money cents={Math.max(bal.payableCents, 0)} /></b></p>
+                {bal.pendingCents > 0 && <p>Em carência (libera {env().AFFILIATE_PIX_HOLD_DAYS} dias após o pagamento do cliente): <Money cents={bal.pendingCents} /></p>}
+                {payouts.length > 0 && (
+                  <ul className="mt-1 divide-y divide-line">
+                    {payouts.map((p) => (
+                      <li key={p.id} className="flex items-center justify-between gap-3 py-2">
+                        <span>{p.createdAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })} · {PAYOUT_LABEL[p.status]}</span>
+                        <b className="text-ink"><Money cents={p.amountCents} /></b>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
             )}
-            <ActionForm action={saveWalletAction}>
-              <label className="field">
-                <span>{aff.walletId ? "Trocar Wallet ID" : "Wallet ID do Asaas"}</span>
-                <input className="input font-mono" name="walletId" placeholder="xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx" autoComplete="off" required />
-              </label>
-              <Submit pendingText="Salvando…" className="btn btn-primary w-fit">Salvar carteira</Submit>
-            </ActionForm>
           </div>
         </Panel>
 
@@ -154,7 +207,7 @@ export default async function AffiliatesPage() {
               ))}
             </ul>
           )}
-          <p className="mt-4 text-xs text-ink-faint">Valores calculados sobre o valor líquido (depois da taxa do Asaas). Estornos e chargebacks cancelam a comissão daquele pagamento.</p>
+          <p className="mt-4 text-xs text-ink-faint">Valores calculados sobre o valor líquido (depois da taxa do Asaas). Estornos e chargebacks cancelam a comissão daquele pagamento; se ela já tiver sido paga por Pix, o valor é descontado no próximo repasse.</p>
         </Panel>
       </div>
     </>

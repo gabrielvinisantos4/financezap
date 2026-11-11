@@ -8,7 +8,7 @@ import { addDays, addMonths, todayIn } from "../finance/dates";
 import { FinanceError } from "../finance/errors";
 import { opEvent } from "../ops/events";
 import { asaas, AsaasError, checkoutUrl, type AsaasPayment, type AsaasSplit } from "./asaas";
-import { ensureRemoteSplit, recordCommission, reverseCommission, splitForCustomer } from "../affiliates/affiliates";
+import { applyTransferEvent, ensureRemoteSplit, recordCommission, reverseCommission, splitForCustomer } from "../affiliates/affiliates";
 
 export async function listActivePlans(): Promise<Plan[]> {
   return db().select().from(plans).where(eq(plans.active, true)).orderBy(asc(plans.sortOrder));
@@ -145,7 +145,7 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
 
   /** Se o Asaas recusar o split (carteira inválida), segue sem ele: o cliente não pode ficar travado. */
   async function withSplit<T>(fn: (split: AsaasSplit[] | undefined) => Promise<T>): Promise<T> {
-    if (!referral) return fn(undefined);
+    if (!referral?.split) return fn(undefined);
     try {
       return await fn(referral.split);
     } catch (err) {
@@ -238,6 +238,7 @@ const asaasEventSchema = z
       .optional(),
     subscription: z.object({ id: z.string(), customer: z.string().nullish(), externalReference: z.string().nullish(), status: z.string().optional(), deleted: z.boolean().optional() }).passthrough().optional(),
     checkout: z.object({ id: z.string(), customer: z.string().nullish(), status: z.string().nullish() }).passthrough().optional(),
+    transfer: z.object({ id: z.string(), status: z.string().nullish(), failReason: z.string().nullish() }).passthrough().optional(),
   })
   .passthrough();
 
@@ -351,6 +352,10 @@ async function upsertPayment(userId: string, subscriptionId: string | null, p: A
 const PAID = new Set(["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"]);
 
 async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
+  if (ev.transfer) {
+    await applyTransferEvent(ev.event, ev.transfer);
+    return;
+  }
   if (ev.payment) {
     const subId = ev.payment.subscription;
     if (!subId) return; // cobrança avulsa: não é deste produto

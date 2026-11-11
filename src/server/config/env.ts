@@ -25,6 +25,9 @@ const schema = z.object({
   CARD_TRIAL_DAYS: z.coerce.number().int().min(0).max(90).default(15),
   // Programa de afiliados: % do valor líquido de cada cobrança paga, via split do Asaas
   AFFILIATE_COMMISSION_PCT: z.coerce.number().min(0).max(90).default(30),
+  // Pix mensal: valor mínimo do repasse e carência (dias) antes de a comissão poder ser paga
+  AFFILIATE_PIX_MIN_CENTS: z.coerce.number().int().min(0).default(2000),
+  AFFILIATE_PIX_HOLD_DAYS: z.coerce.number().int().min(0).max(60).default(7),
 
   // Segredo para HMAC de tokens/códigos (mín. 32 chars em produção)
   APP_SECRET: z.string().min(16),

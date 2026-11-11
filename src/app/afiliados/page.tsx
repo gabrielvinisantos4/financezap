@@ -27,12 +27,12 @@ export default async function AffiliateLanding() {
   const steps = [
     { n: 1, title: "Crie sua conta", text: "Grátis e sem precisar assinar." },
     { n: 2, title: "Pegue seu link", text: "Ex.: agentefinancezap.com.br/r/seu-nome" },
-    { n: 3, title: "Receba todo mês", text: `${pct}% de cada mensalidade, direto no Asaas.` },
+    { n: 3, title: "Receba todo mês", text: `${pct}% de cada mensalidade, no Asaas ou por Pix.` },
   ];
   const faq = [
     { q: "Preciso ser assinante para ser afiliado?", a: "Não. Qualquer pessoa pode criar a conta e pegar o link." },
-    { q: "Como eu recebo?", a: "Pelo split do Asaas. A cada mensalidade paga por um indicado, o Asaas separa a sua parte e manda direto para a sua conta Asaas. Ninguém precisa lembrar de te pagar." },
-    { q: "Preciso ter conta no Asaas?", a: "Sim, é ela que recebe. A conta é grátis e pode ser de pessoa física. Depois você copia o Wallet ID (em Integrações) e cola no seu painel de afiliado." },
+    { q: "Como eu recebo?", a: "Você escolhe. Com conta no Asaas, a sua parte é separada automaticamente a cada mensalidade paga e cai na hora. Ou cadastre uma chave Pix de qualquer banco e receba tudo junto uma vez por mês." },
+    { q: "Preciso ter conta no Asaas?", a: "Não. É só uma das opções (a mais rápida, porque cai a cada pagamento). Se preferir, cadastre sua chave Pix: o pagamento sai uma vez por mês, a partir de R$ 20." },
     { q: "Por quanto tempo eu ganho?", a: `Enquanto o seu indicado continuar pagando. É ${pct}% do valor líquido de cada mensalidade, todo mês.` },
     { q: "E se a pessoa só clicar e assinar depois?", a: "Quem abrir o seu link fica marcado por 60 dias. Se criar a conta nesse prazo, é seu indicado." },
     { q: "O que não pode?", a: "Indicar a si mesmo, criar contas falsas, fazer spam ou prometer o que o FinanceZap não faz. Isso suspende o afiliado." },
@@ -76,7 +76,7 @@ export default async function AffiliateLanding() {
               Indique o FinanceZap e ganhe <em>{pct}% todo mês.</em>
             </h1>
             <p>
-              Cada pessoa que assinar pelo seu link gera comissão em todas as mensalidades, enquanto continuar assinante. O dinheiro cai direto na sua conta do Asaas.
+              Cada pessoa que assinar pelo seu link gera comissão em todas as mensalidades, enquanto continuar assinante. Receba no Asaas ou por Pix em qualquer banco.
             </p>
             <div className="fz-actions">
               <Link href={join} className="fz-pill fz-pill-green fz-pill-lg">

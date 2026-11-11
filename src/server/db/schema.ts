@@ -46,6 +46,8 @@ export const dataRequestType = pgEnum("data_request_type", ["export", "delete"])
 export const dataRequestStatus = pgEnum("data_request_status", ["requested", "processing", "done", "rejected"]);
 export const affiliateStatus = pgEnum("affiliate_status", ["active", "blocked"]);
 export const commissionStatus = pgEnum("commission_status", ["credited", "reversed"]);
+export const payoutMethod = pgEnum("payout_method", ["asaas_split", "pix"]);
+export const payoutStatus = pgEnum("payout_status", ["awaiting_approval", "processing", "paid", "failed", "canceled"]);
 
 /* ------------------------------------------------------------------ */
 /* Identidade, sessões e consentimentos                                 */
@@ -266,6 +268,9 @@ export const affiliates = pgTable(
     userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
     code: text("code").notNull(), // usado no link /r/<code>
     walletId: text("wallet_id"), // carteira do Asaas que recebe o split
+    payoutMethod: payoutMethod("payout_method").notNull().default("asaas_split"),
+    pixKey: text("pix_key"), // chave Pix (quando recebe por Pix mensal)
+    pixKeyType: text("pix_key_type"), // CPF | CNPJ | EMAIL | PHONE | EVP
     commissionBps: integer("commission_bps").notNull(), // 3000 = 30% do valor líquido
     status: affiliateStatus("status").notNull().default("active"),
     clicks: integer("clicks").notNull().default(0),
@@ -287,10 +292,31 @@ export const affiliateCommissions = pgTable(
     commissionCents: integer("commission_cents").notNull(),
     status: commissionStatus("status").notNull().default("credited"),
     paidAt: timestamp("paid_at", { withTimezone: true }),
+    // Pix mensal: em qual repasse esta comissão foi incluída (split do Asaas não usa)
+    payoutId: uuid("payout_id"),
     createdAt: createdAt(),
     updatedAt: updatedAt(),
   },
   (t) => [uniqueIndex("affiliate_commissions_payment_uq").on(t.providerPaymentId), index("affiliate_commissions_affiliate_idx").on(t.affiliateId)],
+);
+
+export const affiliatePayouts = pgTable(
+  "affiliate_payouts",
+  {
+    id: id(),
+    affiliateId: uuid("affiliate_id").notNull().references(() => affiliates.id, { onDelete: "cascade" }),
+    amountCents: integer("amount_cents").notNull(),
+    pixKey: text("pix_key").notNull(),
+    pixKeyType: text("pix_key_type").notNull(),
+    status: payoutStatus("status").notNull().default("awaiting_approval"),
+    providerTransferId: text("provider_transfer_id"),
+    failReason: text("fail_reason"),
+    approvedBy: uuid("approved_by"),
+    paidAt: timestamp("paid_at", { withTimezone: true }),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [index("affiliate_payouts_affiliate_idx").on(t.affiliateId), uniqueIndex("affiliate_payouts_transfer_uq").on(t.providerTransferId)],
 );
 
 /* ------------------------------------------------------------------ */
@@ -581,3 +607,4 @@ export type Budget = typeof budgets.$inferSelect;
 
 export type Affiliate = typeof affiliates.$inferSelect;
 export type AffiliateCommission = typeof affiliateCommissions.$inferSelect;
+export type AffiliatePayout = typeof affiliatePayouts.$inferSelect;

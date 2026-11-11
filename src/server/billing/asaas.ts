@@ -121,6 +121,10 @@ export const asaas = {
   updatePaymentSplit: (p: { id: string; billingType: string; value: number; dueDate: string }, split: AsaasSplit[]) =>
     call<AsaasPayment>("POST", `/payments/${encodeURIComponent(p.id)}`, { billingType: p.billingType, value: p.value, dueDate: p.dueDate, split }),
 
+  /** Pix da conta do FinanceZap para a chave de um afiliado (repasse mensal de comissão). */
+  createPixTransfer: (input: { value: number; pixAddressKey: string; pixAddressKeyType: string; description: string; externalReference: string }) =>
+    call<{ id: string; status: string; failReason?: string | null }>("POST", "/transfers", { operationType: "PIX", ...input }),
+
   cancelCheckout: (checkoutId: string) => call<unknown>("POST", `/checkouts/${encodeURIComponent(checkoutId)}/cancel`),
 
   cancelSubscription: (subscriptionId: string) => call<{ deleted: boolean; id: string }>("DELETE", `/subscriptions/${encodeURIComponent(subscriptionId)}`),

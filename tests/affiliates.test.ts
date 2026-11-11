@@ -1,17 +1,17 @@
 import { afterAll, afterEach, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { closeDb, db } from "@/server/db/client";
-import { affiliateCommissions, affiliates, plans, subscriptions, users } from "@/server/db/schema";
+import { affiliateCommissions, affiliatePayouts, affiliates, plans, subscriptions, users } from "@/server/db/schema";
 import { handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
 import { setAsaasFetcher } from "@/server/billing/asaas";
-import { affiliateDashboard, attachReferral, createAffiliate, registerClick, setAffiliateStatus, setAffiliateWallet, splitForCustomer } from "@/server/affiliates/affiliates";
+import { affiliateDashboard, approvePixPayout, attachReferral, createAffiliate, createPixPayouts, normalizePixKey, pixBalance, registerClick, setAffiliatePix, setAffiliateStatus, setAffiliateWallet, splitForCustomer } from "@/server/affiliates/affiliates";
 import { makeUser, resetDb } from "./helpers";
 
 const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
 const WALLET = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d";
 const OWN_WALLET = "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee";
 
-function fakeAsaas(opts: { rejectSplit?: boolean } = {}) {
+function fakeAsaas(opts: { rejectSplit?: boolean; failTransfer?: boolean } = {}) {
   const st = {
     calls: [] as string[],
     bodies: new Map<string, unknown>(),
@@ -53,6 +53,7 @@ function fakeAsaas(opts: { rejectSplit?: boolean } = {}) {
       st.payments.set(pay[1], { ...st.payments.get(pay[1]), split: body.split });
       return json(st.payments.get(pay[1]));
     }
+    if (method === "POST" && url === "/transfers") return opts.failTransfer ? json({ errors: [{ description: "Saldo insuficiente." }] }, 400) : json({ id: `tra_${++st.seq}`, status: "PENDING" });
     if (method === "DELETE") return json({ deleted: true });
     return json({ errors: [{ description: `rota não simulada ${method} ${url}` }] }, 404);
   });
@@ -169,5 +170,82 @@ describe("programa de afiliados", () => {
     const [u] = await db().select().from(users).where(eq(users.id, owner.id));
     expect(u.referredByAffiliateId).toBeNull();
     expect(aff.commissionBps).toBe(3000);
+  });
+
+  it("Pix mensal: sem split no Asaas, comissão acumula, carência de 7 dias, repasse aprovado vira Pix e o webhook confirma", async () => {
+    const st = fakeAsaas();
+    const { aff } = await makeAffiliate();
+    await setAffiliatePix(aff.userId, "CPF", "529.982.247-25");
+    const client = await makeUser();
+    await attachReferral(client.id, "maria");
+    expect(await splitForCustomer(client.id)).toEqual({ affiliateId: aff.id, split: null });
+
+    await startCheckout(client.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    expect((st.bodies.get("POST /subscriptions") as { split?: unknown }).split).toBeUndefined();
+    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, client.id));
+    expect(sub.affiliateId).toBe(aff.id);
+
+    const payId = `pay_${sub.providerSubscriptionId}`;
+    st.payments.set(payId, { ...st.payments.get(payId)!, status: "RECEIVED", paymentDate: "2026-11-11", netValue: 16.0 });
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_p1", event: "PAYMENT_RECEIVED", payment: { id: payId, customer: "cus_T", subscription: sub.providerSubscriptionId, status: "RECEIVED", value: 16.9 } }), TOKEN);
+    const [c] = await db().select().from(affiliateCommissions);
+    expect(c.commissionCents).toBe(480);
+
+    // Ainda na carência: nada a pagar
+    expect(await pixBalance(aff.id)).toEqual({ payableCents: 0, pendingCents: 480 });
+    expect(await createPixPayouts()).toBe(0);
+
+    // 8 dias depois, mas abaixo do mínimo de R$ 20: não gera
+    const later = new Date(Date.now() + 8 * 86400_000);
+    expect(await pixBalance(aff.id, later)).toEqual({ payableCents: 480, pendingCents: 0 });
+    expect(await createPixPayouts(later)).toBe(0);
+
+    // Com mais comissões, passa do mínimo
+    for (let i = 0; i < 4; i++) {
+      await db().insert(affiliateCommissions).values({ affiliateId: aff.id, customerUserId: client.id, providerPaymentId: `pay_x${i}`, netCents: 1600, commissionCents: 480, createdAt: new Date(Date.now() - 10 * 86400_000) });
+    }
+    expect(await createPixPayouts(later)).toBe(1);
+    const [p] = await db().select().from(affiliatePayouts);
+    expect(p).toMatchObject({ amountCents: 2400, status: "awaiting_approval", pixKey: "52998224725", pixKeyType: "CPF" });
+
+    const admin = await makeUser({ email: "admin@exemplo.test" });
+    await approvePixPayout(p.id, admin.id);
+    expect(st.bodies.get("POST /transfers")).toMatchObject({ value: 24, pixAddressKey: "52998224725", pixAddressKeyType: "CPF", operationType: "PIX", externalReference: p.id });
+    await expect(approvePixPayout(p.id, admin.id)).rejects.toThrow(); // clique duplo não manda dois Pix
+
+    const [sent] = await db().select().from(affiliatePayouts);
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_t1", event: "TRANSFER_DONE", transfer: { id: sent.providerTransferId, status: "DONE" } }), TOKEN);
+    expect((await db().select().from(affiliatePayouts))[0].status).toBe("paid");
+
+    // Estorno de comissão já paga: vira desconto no próximo repasse
+    st.payments.set(payId, { ...st.payments.get(payId)!, status: "REFUNDED" });
+    await handleAsaasWebhook(JSON.stringify({ id: "evt_p2", event: "PAYMENT_REFUNDED", payment: { id: payId, customer: "cus_T", subscription: sub.providerSubscriptionId, status: "REFUNDED", value: 16.9 } }), TOKEN);
+    expect(await pixBalance(aff.id, later)).toEqual({ payableCents: -480, pendingCents: 0 });
+  });
+
+  it("Pix que falha no Asaas devolve o valor para o saldo", async () => {
+    fakeAsaas({ failTransfer: true });
+    const { aff } = await makeAffiliate();
+    await setAffiliatePix(aff.userId, "EMAIL", "Maria@Exemplo.test");
+    await db().insert(affiliateCommissions).values({ affiliateId: aff.id, providerPaymentId: "pay_old", netCents: 10000, commissionCents: 3000, createdAt: new Date(Date.now() - 20 * 86400_000) });
+    expect(await createPixPayouts()).toBe(1);
+    const [p] = await db().select().from(affiliatePayouts);
+    await expect(approvePixPayout(p.id, aff.userId)).rejects.toThrow(/Saldo insuficiente/);
+    expect((await db().select().from(affiliatePayouts))[0]).toMatchObject({ status: "failed" });
+    expect(await pixBalance(aff.id)).toEqual({ payableCents: 3000, pendingCents: 0 });
+  });
+
+  it("trocar de Asaas para Pix tira o split das assinaturas dos indicados", async () => {
+    const st = fakeAsaas();
+    const { aff } = await makeAffiliate();
+    await setAffiliateWallet(aff.userId, WALLET);
+    const client = await makeUser();
+    await attachReferral(client.id, "maria");
+    await startCheckout(client.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, client.id));
+    await setAffiliatePix(aff.userId, "PHONE", "(44) 99188-7438");
+    expect(st.bodies.get(`PUT /subscriptions/${sub.providerSubscriptionId}`)).toMatchObject({ split: [] });
+    expect(normalizePixKey("PHONE", "+55 44 99188-7438")).toEqual({ type: "PHONE", key: "44991887438" });
+    expect(() => normalizePixKey("CPF", "111.111.111-11")).toThrow(/CPF inválido/);
   });
 });

@@ -41,8 +41,8 @@ export default function Terms() {
         <li>Qualquer pessoa maior de idade pode se cadastrar como afiliado, mesmo sem ser assinante, e recebe um link próprio de indicação.</li>
         <li>Quem entra pelo link e cria conta em até 60 dias fica ligado ao afiliado. Vale o último link usado antes do cadastro.</li>
         <li>O afiliado recebe o percentual informado no painel de afiliados (hoje, 30%) sobre o valor líquido, já descontada a taxa do gateway, de cada mensalidade efetivamente paga pelo indicado, enquanto ele continuar assinante.</li>
-        <li>O pagamento é feito automaticamente pelo split do Asaas, direto na conta Asaas do afiliado, sem necessidade de transferência manual. Sem a carteira (Wallet ID) cadastrada, não há como repassar a comissão; as mensalidades pagas antes do cadastro da carteira não geram comissão retroativa.</li>
-        <li>Estornos, chargebacks e cancelamentos desfazem a comissão do pagamento correspondente.</li>
+        <li>O afiliado escolhe como recebe: (a) pela conta Asaas dele, com a comissão separada automaticamente (split) a cada pagamento; ou (b) por Pix em qualquer banco, uma vez por mês, reunindo as comissões com mais de 7 dias, a partir de R$ 20 (valores menores passam para o mês seguinte). Sem conta Asaas ou chave Pix cadastrada, não há como repassar a comissão; mensalidades pagas antes desse cadastro não geram comissão retroativa.</li>
+        <li>Estornos, chargebacks e cancelamentos desfazem a comissão do pagamento correspondente. Se ela já tiver sido paga por Pix, o valor é descontado do repasse seguinte.</li>
         <li>Não é permitido indicar a si mesmo, criar contas falsas, fazer spam, prometer o que o serviço não faz ou anunciar usando a marca FinanceZap de forma enganosa. Nesses casos o afiliado pode ser suspenso e as comissões ligadas à fraude, canceladas.</li>
         <li>O percentual e as regras podem mudar para novas indicações, com aviso prévio no painel. O afiliado é responsável pelos tributos sobre o que recebe.</li>
       </ul>

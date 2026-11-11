@@ -57,6 +57,13 @@
       "when": 1794430872687,
       "tag": "0007_afiliados",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794431670635,
+      "tag": "0008_afiliados_pix",
+      "breakpoints": true
     }
   ]
 }
