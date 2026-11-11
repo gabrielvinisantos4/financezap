@@ -68,9 +68,9 @@ export async function ingestWebhook(rawBody: string, signature: string | null): 
 export async function requeueStuck(olderThanMinutes = 2): Promise<number> {
   const rows = await db().execute<{ id: string }>(sql`
     select id from inbound_messages
-     where status in ('queued','processing') and received_at < now() - make_interval(mins => ${olderThanMinutes})
+     where status in ('queued','processing') and created_at < now() - make_interval(mins => ${olderThanMinutes})
        and attempts < 5
-     order by received_at limit 100`);
+     order by created_at limit 100`);
   for (const r of rows.rows) await enqueueInbound(r.id);
   return rows.rows.length;
 }

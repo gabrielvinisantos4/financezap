@@ -115,3 +115,23 @@ async function sendRawOnce(to: string, body: Record<string, unknown>, userId: st
 export async function updateOutboundStatus(waMessageId: string, status: string, error: string | null) {
   await db().update(outboundMessages).set({ status, error }).where(eq(outboundMessages.waMessageId, waMessageId));
 }
+
+/**
+ * Marca a mensagem como lida e mostra "digitando…" para o cliente enquanto o robô
+ * trabalha (some sozinho quando a resposta chega ou após ~25 s). Não é essencial:
+ * falhas são ignoradas.
+ */
+export async function showTyping(waMessageId: string): Promise<void> {
+  const e = env();
+  if (e.WHATSAPP_DRY_RUN || !e.WHATSAPP_ACCESS_TOKEN || !e.WHATSAPP_PHONE_NUMBER_ID || waMessageId.startsWith("sim.")) return;
+  try {
+    await fetch(`https://graph.facebook.com/${e.WHATSAPP_GRAPH_VERSION}/${e.WHATSAPP_PHONE_NUMBER_ID}/messages`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${e.WHATSAPP_ACCESS_TOKEN}` },
+      body: JSON.stringify({ messaging_product: "whatsapp", status: "read", message_id: waMessageId, typing_indicator: { type: "text" } }),
+      signal: AbortSignal.timeout(5000),
+    });
+  } catch {
+    // indicador visual apenas
+  }
+}

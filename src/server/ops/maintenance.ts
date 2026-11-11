@@ -17,8 +17,8 @@ import { opEvent } from "./events";
  */
 export async function runRetention() {
   const r = await withSystem(async (tx) => {
-    const a = await tx.execute(sql`update inbound_messages set payload = null, reply = null where received_at < now() - interval '30 days' and (payload is not null or reply is not null)`);
-    const b = await tx.execute(sql`delete from inbound_messages where received_at < now() - interval '90 days'`);
+    const a = await tx.execute(sql`update inbound_messages set payload = null, reply = null where created_at < now() - interval '30 days' and (payload is not null or reply is not null)`);
+    const b = await tx.execute(sql`delete from inbound_messages where created_at < now() - interval '90 days'`);
     const c = await tx.execute(sql`delete from conversation_turns where created_at < now() - interval '7 days'`);
     const d = await tx.execute(sql`delete from pending_actions where created_at < now() - interval '7 days'`);
     const e = await tx.execute(sql`delete from link_codes where created_at < now() - interval '7 days'`);

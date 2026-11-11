@@ -11,7 +11,7 @@ import { getEntitlement, INACTIVE_MESSAGES, monthlyUsage, recordUsage } from "..
 import { rateLimit, withLock } from "../security/rate-limit";
 import { opEvent } from "../ops/events";
 import { consumeLinkCode, extractLinkCode, findUserByWaId } from "./linking";
-import { sendReply } from "./client";
+import { sendReply, showTyping } from "./client";
 import { MediaError, OpenAIMediaReader, receiptToMessage, type MediaReader } from "./media";
 import type { MediaRef } from "./webhook";
 
@@ -51,6 +51,8 @@ export async function processInbound(inboundId: string, opts: { finalAttempt: bo
     const [current] = await db().select().from(inboundMessages).where(eq(inboundMessages.id, inboundId));
     if (!current || current.status === "processed" || current.status === "ignored" || current.status === "failed") return "skipped";
     await db().update(inboundMessages).set({ status: "processing", attempts: sql`${inboundMessages.attempts} + 1` }).where(eq(inboundMessages.id, inboundId));
+    // "digitando…" já na primeira tentativa, em paralelo com o processamento
+    const typing = current.attempts === 0 ? showTyping(current.waMessageId) : Promise.resolve();
 
     try {
       let reply = current.reply as Reply | null;
@@ -66,6 +68,7 @@ export async function processInbound(inboundId: string, opts: { finalAttempt: bo
         // Persistimos a resposta ANTES de enviar: se o envio falhar, não refazemos a ação
         await db().update(inboundMessages).set({ reply, userId }).where(eq(inboundMessages.id, inboundId));
       }
+      await typing;
       await sendReply(current.waId, reply, userId);
       await db()
         .update(inboundMessages)
