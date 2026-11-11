@@ -99,14 +99,95 @@ function BubbleView({ b }: { b: Bubble }) {
   );
 }
 
-export function Phone({ scene = "escrever", interactive = false, size = "lg" }: { scene?: Scene; interactive?: boolean; size?: "lg" | "md" }) {
+/** Roteiro da animação: o que a pessoa manda e o que o robô responde, em ordem. */
+type Step = { me: Bubble; bot: string; typed?: string };
+const SCRIPT: Step[] = [
+  { typed: "Gastei 50 no posto", me: { from: "me", text: "Gastei 50 no posto", time: "10:20" }, bot: "✅ Despesa registrada!\n⛽ Combustível\nR$ 50,00" },
+  { me: { from: "me", kind: "audio", seconds: 4, time: "12:31" }, bot: "🎙️ “paguei 35 na farmácia”\n\n✅ Despesa registrada!\n💊 Farmácia\nR$ 35,00" },
+  { me: { from: "me", kind: "receipt", time: "19:05" }, bot: "🧾 Li o comprovante.\n\n✅ Despesa registrada!\n🛒 Mercado\nR$ 89,90" },
+  { typed: "Quanto gastei este mês?", me: { from: "me", text: "Quanto gastei este mês?", time: "19:06" }, bot: "📊 Você gastou\nR$ 2.031,55 este mês." },
+];
+
+const sleep = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+
+export function Phone({ scene = "escrever", interactive = false, autoplay = false, size = "lg" }: { scene?: Scene; interactive?: boolean; autoplay?: boolean; size?: "lg" | "md" }) {
   const [live, setLive] = useState<{ me: string; bot: string | null; time: string } | null>(null);
   const [draft, setDraft] = useState("");
   const timer = useRef<number | null>(null);
   useEffect(() => () => void (timer.current && window.clearTimeout(timer.current)), []);
 
+  // Animação: mensagens chegando uma a uma, em loop, só enquanto o celular está na tela
+  const [auto, setAuto] = useState(autoplay);
+  const [autoMsgs, setAutoMsgs] = useState<{ id: number; b: Bubble }[]>([]);
+  const [autoTyping, setAutoTyping] = useState(false);
+  const [autoTyped, setAutoTyped] = useState("");
+  const [cycle, setCycle] = useState(0);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const visible = useRef(true);
+
+  useEffect(() => {
+    if (!auto) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      setAuto(false);
+      return;
+    }
+    const el = rootRef.current;
+    const io = el && "IntersectionObserver" in window ? new IntersectionObserver(([e]) => (visible.current = e.isIntersecting), { threshold: 0.15 }) : null;
+    if (el && io) io.observe(el);
+    let stop = false;
+    const wait = async (ms: number) => {
+      let left = ms;
+      while (left > 0 && !stop) {
+        await sleep(Math.min(left, 100));
+        if (visible.current && !document.hidden) left -= 100;
+      }
+    };
+    (async () => {
+      let id = 0;
+      for (let round = 0; !stop; round++) {
+        setCycle(round);
+        setAutoMsgs([]);
+        await wait(700);
+        for (const step of SCRIPT) {
+          if (stop) return;
+          if (step.typed) {
+            for (let i = 1; i <= step.typed.length && !stop; i++) {
+              setAutoTyped(step.typed.slice(0, i));
+              await wait(55);
+            }
+            await wait(350);
+            setAutoTyped("");
+          } else {
+            await wait(500);
+          }
+          setAutoMsgs((m) => [...m, { id: id++, b: step.me }]);
+          await wait(650);
+          setAutoTyping(true);
+          await wait(1300);
+          setAutoTyping(false);
+          setAutoMsgs((m) => [...m, { id: id++, b: { from: "bot", text: step.bot, time: "time" in step.me ? step.me.time : "" } }]);
+          await wait(2200);
+        }
+        await wait(1800);
+      }
+    })();
+    return () => {
+      stop = true;
+      io?.disconnect();
+    };
+  }, [auto]);
+
+  function takeOver() {
+    if (auto) {
+      setAuto(false);
+      setAutoTyped("");
+      setAutoTyping(false);
+    }
+  }
+
   function send(e: React.FormEvent) {
     e.preventDefault();
+    takeOver();
     const text = draft.trim().slice(0, 160);
     if (!text) return;
     const time = nowTime();
@@ -116,12 +197,16 @@ export function Phone({ scene = "escrever", interactive = false, size = "lg" }: 
     timer.current = window.setTimeout(() => setLive({ me: text, bot: previewReply(text), time }), 900);
   }
 
-  const bubbles: Bubble[] = live
-    ? [{ from: "me", text: live.me, time: live.time }, ...(live.bot ? [{ from: "bot" as const, text: live.bot, time: live.time }] : [])]
-    : SCENES[scene];
+  const showingAuto = auto && !live;
+  const bubbles: { id: number | string; b: Bubble }[] = live
+    ? [{ id: "m", b: { from: "me", text: live.me, time: live.time } }, ...(live.bot ? [{ id: "b", b: { from: "bot" as const, text: live.bot, time: live.time } }] : [])]
+    : showingAuto
+      ? autoMsgs
+      : SCENES[scene].map((b, i) => ({ id: i, b }));
+  const typing = (live && !live.bot) || (showingAuto && autoTyping);
 
   return (
-    <div className={`ph ph-${size}`} data-ui>
+    <div ref={rootRef} className={`ph ph-${size}`} data-ui>
       <div className="ph-screen">
         <div className="ph-status" aria-hidden="true">
           <span>10:24</span>
@@ -139,14 +224,19 @@ export function Phone({ scene = "escrever", interactive = false, size = "lg" }: 
           </span>
           <span>
             <strong>FinanceZap</strong>
-            <small>{live && !live.bot ? "digitando…" : "online"}</small>
+            <small>{typing ? "digitando…" : "online"}</small>
           </span>
         </div>
-        <ol key={live ? `live-${live.time}-${live.me}` : scene} className="ph-chat" aria-live="polite" aria-label="Conversa de exemplo com o FinanceZap">
-          {bubbles.map((b, i) => (
-            <BubbleView key={i} b={b} />
+        <ol
+          key={live ? `live-${live.time}-${live.me}` : showingAuto ? `auto-${cycle}` : scene}
+          className={`ph-chat ${showingAuto ? "is-auto" : ""}`}
+          aria-live={showingAuto ? "off" : "polite"}
+          aria-label="Conversa de exemplo com o FinanceZap"
+        >
+          {bubbles.map(({ id, b }) => (
+            <BubbleView key={id} b={b} />
           ))}
-          {live && !live.bot && (
+          {typing && (
             <li className="ph-row is-bot">
               <div className="ph-bubble ph-typing" aria-label="digitando">
                 <i />
@@ -163,8 +253,13 @@ export function Phone({ scene = "escrever", interactive = false, size = "lg" }: 
             </label>
             <input
               id={`ph-try-${size}`}
-              value={draft}
-              onChange={(e) => setDraft(e.target.value)}
+              value={showingAuto ? autoTyped : draft}
+              onChange={(e) => {
+                takeOver();
+                setDraft(e.target.value);
+              }}
+              onFocus={takeOver}
+              onPointerDown={takeOver}
               placeholder="Experimente: paguei 120 de luz"
               autoComplete="off"
               maxLength={160}

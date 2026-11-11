@@ -154,7 +154,7 @@ export default async function Home() {
 
           <div className="fz-hero-visual" data-r>
             <div className="fz-glow" aria-hidden="true" />
-            <Phone interactive />
+            <Phone interactive autoplay />
             <div className="fz-float fz-f1 glass" aria-hidden="true">
               <span className="fz-float-icon">
                 <svg viewBox="0 0 16 16" width="16" height="16">

@@ -639,6 +639,9 @@
   padding: 14px 12px;
   overflow: hidden;
 }
+.ph-chat.is-auto {
+  justify-content: flex-end;
+}
 .ph-row {
   display: flex;
   animation: ph-in 520ms var(--ease) both;
@@ -651,6 +654,9 @@
 }
 .ph-row:nth-child(4) {
   animation-delay: 360ms;
+}
+.ph-chat.is-auto .ph-row {
+  animation-delay: 0ms;
 }
 .ph-row.is-me {
   justify-content: flex-end;
