@@ -47,6 +47,7 @@ export function buildSystemPrompt(ctx: InterpretContext): string {
     "- query: perguntas sobre os próprios dados (\"quanto gastei\", \"quanto entrou\", \"saldo\", \"últimos lançamentos\", \"maior despesa\", \"contas a pagar\").",
     "- correct: corrigir um lançamento existente (\"errei o valor, era 70\", \"não foi no posto, foi no mercado\"). Preencha target e changes.",
     "- delete: excluir lançamento (\"apaga o último gasto\", \"exclui aquele de 50\", \"registrei duas vezes\" → target.reference=duplicate).",
+    "- budget: limites de gasto mensais. set = definir/alterar (\"meu limite de alimentação é 800\", \"quero gastar no máximo 3 mil por mês\"); remove = tirar (\"tira o limite de lazer\"); status = consultar (\"como estão meus limites?\", \"quanto falta do limite de mercado?\"). Preencha budget: category = slug de DESPESA ou null para o limite total do mês; amount só em set.",
     "- confirm / cancel: respostas como \"sim\", \"pode\", \"confirmo\" / \"não\", \"cancela\".",
     "- select_option: quando o usuário escolhe uma opção numerada (\"a 2\", \"o segundo\") → selected_option.",
     "- help, greeting, out_of_scope (assuntos não financeiros), unclear (não dá para entender).",

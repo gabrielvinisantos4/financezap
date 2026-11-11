@@ -78,12 +78,19 @@ export const changesSchema = z.object({
   payment_method: z.enum(PAYMENT_METHODS).nullable(),
 });
 
+export const budgetSchema = z.object({
+  action: z.enum(["set", "remove", "status"]),
+  category: z.string().max(48).nullable(), // slug de despesa; null = limite total do mês
+  amount: z.number().positive().max(20_000_000).nullable(), // em reais (só em "set")
+});
+
 export const interpretationSchema = z.object({
-  intent: z.enum(["record", "query", "correct", "delete", "confirm", "cancel", "select_option", "help", "greeting", "out_of_scope", "unclear"]),
+  intent: z.enum(["record", "query", "correct", "delete", "budget", "confirm", "cancel", "select_option", "help", "greeting", "out_of_scope", "unclear"]),
   entries: z.array(entrySchema).max(5),
   query: querySchema.nullable(),
   target: targetSchema.nullable(),
   changes: changesSchema.nullable(),
+  budget: budgetSchema.nullable(),
   selected_option: z.number().int().min(1).max(10).nullable(),
   clarification: z.string().max(300).nullable(),
   confidence: z.number().min(0).max(1),
@@ -94,6 +101,7 @@ export type Entry = z.infer<typeof entrySchema>;
 export type Query = z.infer<typeof querySchema>;
 export type Target = z.infer<typeof targetSchema>;
 export type Changes = z.infer<typeof changesSchema>;
+export type BudgetCommand = z.infer<typeof budgetSchema>;
 
 /* ------------------------------------------------------------------ */
 /* JSON Schema equivalente para Structured Outputs (strict)             */
@@ -166,11 +174,18 @@ export const interpretationJsonSchema = obj({
       payment_method: nullable({ type: "string", enum: [...PAYMENT_METHODS] }),
     }),
   ),
+  budget: nullable(
+    obj({
+      action: { type: "string", enum: ["set", "remove", "status"] },
+      category: nullable({ ...str, description: "Slug de categoria de DESPESA; null = limite total do mês" }),
+      amount: nullable({ ...num, description: "Valor do limite em reais (só para set)" }),
+    }),
+  ),
   selected_option: nullable(int),
   clarification: nullable({ ...str, description: "Pergunta curta ao usuário quando faltar informação" }),
   confidence: { ...num, description: "0 a 1" },
 });
 
 export function emptyInterpretation(intent: Interpretation["intent"], extra: Partial<Interpretation> = {}): Interpretation {
-  return { intent, entries: [], query: null, target: null, changes: null, selected_option: null, clarification: null, confidence: 1, ...extra };
+  return { intent, entries: [], query: null, target: null, changes: null, budget: null, selected_option: null, clarification: null, confidence: 1, ...extra };
 }

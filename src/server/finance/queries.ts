@@ -264,3 +264,17 @@ export async function findDuplicates(tx: Tx, userId: string, sinceDays: number, 
      limit 10`);
   return result.rows;
 }
+
+/** Despesas (menos estornos) por dia no período, para o gráfico de ritmo de gastos. */
+export async function dailyExpenses(tx: Tx, userId: string, p: Period): Promise<{ date: ISODate; cents: number }[]> {
+  const rows = await tx
+    .select({
+      date: transactions.occurredOn,
+      cents: sql<number>`sum(case when ${transactions.kind} = 'refund' then -${transactions.amountCents} else ${transactions.amountCents} end)::bigint`,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), alive, eq(transactions.status, "paid"), inArray(transactions.kind, ["expense", "refund"]), gte(transactions.occurredOn, p.from), lte(transactions.occurredOn, p.to)))
+    .groupBy(transactions.occurredOn)
+    .orderBy(transactions.occurredOn);
+  return rows.map((r) => ({ date: r.date, cents: Number(r.cents) }));
+}

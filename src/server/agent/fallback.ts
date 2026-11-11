@@ -1,5 +1,5 @@
 import { addDays, make, daysInMonth, type ISODate } from "../finance/dates";
-import { guessCategorySlug } from "../finance/categories";
+import { DEFAULT_EXPENSE_CATEGORIES, guessCategorySlug } from "../finance/categories";
 import { emptyInterpretation, type Entry, type Interpretation, type Query } from "./schema";
 import type { InterpretContext, InterpretResult, Interpreter } from "./llm";
 
@@ -244,12 +244,34 @@ export function interpretByRules(message: string, ctx: Pick<InterpretContext, "t
   if (/(ajuda|como funciona|como (eu )?uso|o que (voce )?(faz|sabe)|comandos|menu)/.test(n)) return emptyInterpretation("help");
 
   return (
+    parseBudget(original, n) ??
     parseDelete(original, n) ??
     parseCorrection(original, n) ??
     parseQuery(original, n) ??
     parseRecord(original, n, ctx.today) ??
     emptyInterpretation("unclear", { confidence: 0 })
   );
+}
+
+/** Categoria de despesa citada num pedido de limite (pelo nome da categoria ou por palavra-chave). */
+function budgetCategory(n: string): string | null {
+  for (const c of DEFAULT_EXPENSE_CATEGORIES) {
+    if (c.slug === "outros") continue;
+    const names = [normalize(c.name), c.slug.replace(/-/g, " ")];
+    if (names.some((x) => new RegExp(`\\b${x}\\b`).test(n))) return c.slug;
+  }
+  const g = guessCategorySlug(n, "expense");
+  return g === "outros" ? null : g;
+}
+
+function parseBudget(original: string, n: string): Interpretation | null {
+  if (!/\b(limite|limites|teto|orcamento)\b/.test(n)) return null;
+  const budget = (action: "set" | "remove" | "status", amount: number | null = null): Interpretation =>
+    emptyInterpretation("budget", { budget: { action, category: budgetCategory(n), amount }, confidence: 0.8 });
+  if (/\b(tira|tirar|remove|remover|apaga|apagar|exclui|excluir|cancela|cancelar|sem)\b/.test(n)) return budget("remove");
+  const amount = extractAmount(original);
+  if (amount && !/\b(quanto|como|falta|restam?)\b/.test(n)) return budget("set", amount);
+  return budget("status");
 }
 
 export class RuleInterpreter implements Interpreter {

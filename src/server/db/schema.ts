@@ -323,6 +323,42 @@ export const recurringRules = pgTable(
   ],
 );
 
+/** Limite de gasto mensal: por categoria ou, com categoryId nulo, do total do mês. */
+export const budgets = pgTable(
+  "budgets",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    categoryId: uuid("category_id"),
+    amountCents: integer("amount_cents").notNull(),
+    createdAt: createdAt(),
+    updatedAt: updatedAt(),
+  },
+  (t) => [
+    unique("budgets_id_user_uq").on(t.id, t.userId),
+    unique("budgets_user_category_uq").on(t.userId, t.categoryId).nullsNotDistinct(),
+    check("budgets_amount_ck", sql`amount_cents > 0`),
+    foreignKey({ columns: [t.categoryId, t.userId], foreignColumns: [categories.id, categories.userId], name: "budgets_category_fk" }).onDelete("cascade"),
+  ],
+);
+
+/** Alertas já enviados (80% e 100%) por limite e mês, para não repetir o aviso. */
+export const budgetAlerts = pgTable(
+  "budget_alerts",
+  {
+    id: id(),
+    userId: uuid("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+    budgetId: uuid("budget_id").notNull(),
+    periodStart: date("period_start").notNull(),
+    threshold: integer("threshold").notNull(),
+    createdAt: createdAt(),
+  },
+  (t) => [
+    uniqueIndex("budget_alerts_uq").on(t.budgetId, t.periodStart, t.threshold),
+    foreignKey({ columns: [t.budgetId, t.userId], foreignColumns: [budgets.id, budgets.userId], name: "budget_alerts_budget_fk" }).onDelete("cascade"),
+  ],
+);
+
 export const transactions = pgTable(
   "transactions",
   {
@@ -495,3 +531,5 @@ export type NewTransaction = typeof transactions.$inferInsert;
 export type Plan = typeof plans.$inferSelect;
 export type Subscription = typeof subscriptions.$inferSelect;
 export type PendingAction = typeof pendingActions.$inferSelect;
+
+export type Budget = typeof budgets.$inferSelect;

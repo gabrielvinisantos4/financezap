@@ -31,7 +31,8 @@ import { guessCategorySlug } from "../finance/categories";
 import { FinanceError } from "../finance/errors";
 import { normalize, interpretByRules, isTrivialMessage } from "./fallback";
 import { AIError, type InterpretContext, type Interpreter } from "./llm";
-import type { Changes, Entry, Interpretation, Query, Target } from "./schema";
+import type { BudgetCommand, Changes, Entry, Interpretation, Query, Target } from "./schema";
+import { budgetStatuses, budgetsReply, newBudgetAlerts, removeBudget, setBudget } from "../finance/budgets";
 import * as fmt from "./format";
 import type { Reply } from "./format";
 
@@ -230,6 +231,8 @@ async function dispatch(userId: string, it: Interpretation, msg: IncomingMessage
     case "query":
       if (!it.query) return { text: it.clarification ?? "Qual informação você quer consultar?" };
       return runQuery(userId, it.query, caps, today);
+    case "budget":
+      return handleBudget(userId, it.budget, today, it.clarification);
     case "correct":
       return prepareCorrection(userId, it.target, it.changes, today, now, it.clarification);
     case "delete":
@@ -248,6 +251,30 @@ async function dispatch(userId: string, it: Interpretation, msg: IncomingMessage
     default:
       return { text: it.clarification ?? "Não entendi. 🤔 Você pode escrever, por exemplo: \"gastei 50 no posto\" ou \"quanto gastei hoje?\". Digite *ajuda* para mais exemplos." };
   }
+}
+
+/* ------------------------- Limites de gasto ------------------------- */
+async function handleBudget(userId: string, cmd: BudgetCommand | null, today: ISODate, clarification: string | null): Promise<Reply> {
+  if (!cmd) return { text: clarification ?? 'Quer definir um limite? Ex.: "limite de 800 para mercado" ou "meu limite do mês é 3 mil".' };
+  return withUser(userId, async (tx) => {
+    if (cmd.action === "status") {
+      const list = await budgetStatuses(tx, userId, today);
+      const filtered = cmd.category ? list.filter((b) => b.slug === cmd.category) : list;
+      return { text: budgetsReply(filtered.length ? filtered : list, today) };
+    }
+    if (cmd.action === "remove") {
+      const name = await removeBudget(tx, userId, cmd.category);
+      return { text: name ? `🗑️ Limite de ${name} removido.` : "Não encontrei esse limite. Digite *meus limites* para ver os que existem." };
+    }
+    if (!cmd.amount) return { text: clarification ?? "Qual o valor do limite? Ex.: \"limite de 800 para mercado\"." };
+    const cents = reaisToCents(cmd.amount);
+    const r = await setBudget(tx, userId, cmd.category, cents);
+    const [status] = (await budgetStatuses(tx, userId, today)).filter((b) => (cmd.category ? b.slug === cmd.category : b.categoryId === null));
+    const lines = [`🎯 Limite ${r.created ? "definido" : "atualizado"}!`, "", `${r.icon} ${r.name}: ${formatBRL(cents)} por mês`];
+    if (status) lines.push(`Já usado em ${today.slice(5, 7)}/${today.slice(0, 4)}: ${formatBRL(status.spentCents)} (${status.pct}%)`);
+    lines.push("", "Eu aviso quando chegar em 80% e em 100%.");
+    return { text: lines.join("\n") };
+  });
 }
 
 /* ---------------------------- Registro ----------------------------- */
@@ -333,11 +360,24 @@ async function createAndReply(tx: Tx, userId: string, inputs: CreateEntryInput[]
     const c = categoriesList.find((x) => x.id === rows[0].categoryId);
     results.push({ rows, category: c ? { name: c.name, icon: c.icon } : null, input });
   }
+  let reply: Reply;
   if (results.length === 1) {
     const r = results[0];
-    return fmt.recordedReply(r.rows, r.category, { merchant: r.input.merchant, counterparty: r.input.counterparty });
+    reply = fmt.recordedReply(r.rows, r.category, { merchant: r.input.merchant, counterparty: r.input.counterparty });
+  } else {
+    reply = fmt.multiRecordedReply(results);
   }
-  return fmt.multiRecordedReply(results);
+  // Limites de gasto: só despesas pagas deste mês mexem no que já foi usado
+  const monthStart = today.slice(0, 8) + "01";
+  const touched = results
+    .flatMap((r) => r.rows)
+    .filter((t) => t.kind === "expense" && t.status === "paid" && t.occurredOn >= monthStart && t.occurredOn <= today)
+    .map((t) => t.categoryId);
+  if (touched.length) {
+    const alerts = await newBudgetAlerts(tx, userId, today, touched);
+    if (alerts.length) reply = { ...reply, text: `${reply.text}\n\n${alerts.join("\n\n")}` };
+  }
+  return reply;
 }
 
 /* ---------------------------- Consultas ---------------------------- */

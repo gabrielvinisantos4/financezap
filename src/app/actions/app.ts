@@ -21,6 +21,7 @@ import {
   updateEntry,
 } from "@/server/finance/engine";
 import { FinanceError } from "@/server/finance/errors";
+import { removeBudgetById, setBudget } from "@/server/finance/budgets";
 import { parseBRL } from "@/server/finance/money";
 import { todayIn } from "@/server/finance/dates";
 import { getEntitlement } from "@/server/billing/entitlements";
@@ -168,6 +169,25 @@ export async function archiveAccountAction(form: FormData) {
   const user = await requireUser();
   await withUser(user.id, (tx) => archiveAccount(tx, user.id, z.string().uuid().parse(form.get("id"))));
   revalidatePath("/app/contas");
+}
+
+/* ---------------- Limites de gasto ---------------- */
+export async function saveBudgetAction(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  return guard(async () => {
+    const slug = opt(form.get("category"));
+    await withUser(user.id, (tx) => setBudget(tx, user.id, slug, money(form.get("amount"))));
+    revalidatePath("/app/limites");
+    revalidatePath("/app");
+    return { message: "Limite salvo. Você recebe um aviso no WhatsApp ao chegar em 80% e em 100%." };
+  });
+}
+
+export async function removeBudgetAction(form: FormData) {
+  const user = await requireUser();
+  await withUser(user.id, (tx) => removeBudgetById(tx, user.id, z.string().uuid().parse(form.get("id"))));
+  revalidatePath("/app/limites");
+  revalidatePath("/app");
 }
 
 /* ---------------- Categorias e recorrências ---------------- */

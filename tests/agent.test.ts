@@ -244,3 +244,58 @@ describe("agente financeiro (ponta a ponta no banco)", () => {
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(1);
   });
 });
+
+describe("limites de gasto", () => {
+  const i = (t: string) => interpretByRules(t, { today: TODAY });
+
+  it("entende pedidos de limite por regras", () => {
+    expect(i("limite de 800 para alimentação")).toMatchObject({ intent: "budget", budget: { action: "set", category: "alimentacao", amount: 800 } });
+    expect(i("meu limite do mês é 3 mil")).toMatchObject({ intent: "budget", budget: { action: "set", category: null, amount: 3000 } });
+    expect(i("como estão meus limites?")).toMatchObject({ intent: "budget", budget: { action: "status" } });
+    expect(i("tira o limite de mercado")).toMatchObject({ intent: "budget", budget: { action: "remove", category: "mercado" } });
+  });
+
+  it("avisa uma vez em 80% e uma vez em 100%, e não conta outras categorias", async () => {
+    const u = await makeUser();
+    const r1 = await send(u.id, "limite de 100 para mercado");
+    expect(r1.reply.text).toContain("Limite definido");
+
+    const a = await send(u.id, "gastei 50 no mercado");
+    expect(a.reply.text).not.toContain("limite");
+    const other = await send(u.id, "gastei 300 no posto");
+    expect(other.reply.text).not.toContain("limite");
+
+    const b = await send(u.id, "gastei 35 no mercado");
+    expect(b.reply.text).toContain("85% do limite de *Mercado*");
+    const c = await send(u.id, "gastei 5 no mercado");
+    expect(c.reply.text).not.toContain("limite"); // 90%: já avisado em 80%
+
+    const d = await send(u.id, "gastei 20 no mercado");
+    expect(d.reply.text).toContain("passou do limite de *Mercado*");
+    const e = await send(u.id, "gastei 1 no mercado");
+    expect(e.reply.text).not.toContain("limite");
+
+    const status = await send(u.id, "como estão meus limites?");
+    expect(status.reply.text).toContain("Mercado: R$ 111,00 de R$ 100,00 (111%)");
+  });
+
+  it("limite total do mês soma todas as despesas; remover apaga o limite", async () => {
+    const u = await makeUser();
+    await send(u.id, "meu limite do mês é 1000");
+    await send(u.id, "gastei 500 no mercado");
+    const r = await send(u.id, "gastei 300 no posto");
+    expect(r.reply.text).toContain("80% do limite *total do mês*");
+    const removed = await send(u.id, "tira o limite do mês");
+    expect(removed.reply.text).toContain("removido");
+    const st = await send(u.id, "meus limites");
+    expect(st.reply.text).toContain("ainda não definiu limites");
+  });
+
+  it("isolamento: um cliente não vê nem altera o limite do outro", async () => {
+    const a = await makeUser();
+    const b = await makeUser();
+    await send(a.id, "limite de 100 para mercado");
+    const st = await send(b.id, "como estão meus limites?");
+    expect(st.reply.text).toContain("ainda não definiu limites");
+  });
+});

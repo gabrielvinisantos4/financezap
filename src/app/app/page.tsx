@@ -1,28 +1,64 @@
 import Link from "next/link";
 import { withUser } from "@/server/db/client";
-import { availability, listTransactions, payables, periodSummary, totalsByCategory } from "@/server/finance/queries";
+import { availability, dailyExpenses, listTransactions, payables, periodSummary, totalsByCategory } from "@/server/finance/queries";
+import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
-import { addDays, formatBR, monthLabel, resolvePeriod } from "@/server/finance/dates";
+import { addDays, addMonths, daysInMonth, endOfMonth, formatBR, monthLabel, monthName, resolvePeriod, startOfMonth } from "@/server/finance/dates";
 import { appContext } from "@/server/app-context";
 import { Empty, Money, Panel } from "@/components/ui";
 import { EntryForm } from "@/components/entry-form";
+import { SpendingBreakdown } from "@/components/spending-breakdown";
+import { SpendingPace, type PacePoint } from "@/components/spending-pace";
+import { BudgetBar } from "@/components/budget-bar";
+import { formatBRL } from "@/server/finance/money";
 
 export const metadata = { title: "Visão geral" };
 
 export default async function Overview() {
   const { user, today } = await appContext();
   const month = resolvePeriod({ type: "this_month" }, today);
+  // Mês anterior: inteiro para o gráfico de ritmo; até o mesmo dia para comparar categorias
+  const prevStart = startOfMonth(addMonths(today, -1));
+  const prevEnd = endOfMonth(prevStart);
+  const dayOfMonth = Number(today.slice(8, 10));
+  const prevSameDay = `${prevStart.slice(0, 8)}${String(Math.min(dayOfMonth, Number(prevEnd.slice(8, 10)))).padStart(2, "0")}`;
   const data = await withUser(user.id, async (tx) => ({
     avail: await availability(tx, user.id, today),
     summary: await periodSummary(tx, user.id, month),
     cats: await totalsByCategory(tx, user.id, month, "expense"),
+    prevCats: await totalsByCategory(tx, user.id, { from: prevStart, to: prevSameDay, label: "" }, "expense"),
+    dailyNow: await dailyExpenses(tx, user.id, { from: month.from, to: today, label: "" }),
+    dailyPrev: await dailyExpenses(tx, user.id, { from: prevStart, to: prevEnd, label: "" }),
+    budgets: await budgetStatuses(tx, user.id, today),
     recent: await listTransactions(tx, user.id, { limit: 8 }),
     due: await payables(tx, user.id, addDays(today, 15)),
     categories: await listCategories(tx, user.id),
     accounts: await listAccounts(tx, user.id),
   }));
   const committed = data.avail.cardDebtCents + data.avail.payablesCents + data.avail.futureCardInstallmentsCents;
-  const maxCat = Math.max(1, ...data.cats.map((c) => c.totalCents));
+  const prevName = monthName(Number(prevStart.slice(5, 7)));
+  const breakdown = data.cats
+    .filter((c) => c.totalCents > 0)
+    .map((c) => ({ key: c.categoryId ?? "none", name: c.name, icon: c.icon, cents: c.totalCents, prevCents: data.prevCats.find((p) => p.categoryId === c.categoryId)?.totalCents ?? 0 }));
+  const spentNow = breakdown.reduce((s, r) => s + r.cents, 0);
+  const spentPrevSameDay = data.prevCats.reduce((s, r) => s + Math.max(0, r.totalCents), 0);
+  const paceDelta = spentPrevSameDay > 0 ? Math.round(((spentNow - spentPrevSameDay) / spentPrevSameDay) * 100) : null;
+
+  // Acumulado por dia (1..último dia do mês atual ou anterior)
+  const daysNow = daysInMonth(Number(today.slice(0, 4)), Number(today.slice(5, 7)));
+  const daysPrev = Number(prevEnd.slice(8, 10));
+  const accumulate = (rows: { date: string; cents: number }[]) => {
+    const byDay = new Map(rows.map((r) => [Number(r.date.slice(8, 10)), r.cents]));
+    let acc = 0;
+    return (day: number) => (acc += byDay.get(day) ?? 0);
+  };
+  const nowAt = accumulate(data.dailyNow);
+  const prevAt = accumulate(data.dailyPrev);
+  const pace: PacePoint[] = Array.from({ length: Math.max(daysNow, daysPrev) }, (_, i) => {
+    const day = i + 1;
+    return { day, current: day <= dayOfMonth ? nowAt(day) : null, previous: day <= daysPrev ? prevAt(day) : null };
+  });
+  const monthLimit = data.budgets.find((b) => b.categoryId === null)?.limitCents ?? null;
 
   return (
     <div className="grid gap-6">
@@ -69,22 +105,35 @@ export default async function Overview() {
       <div className="grid gap-6 lg:grid-cols-[1.3fr_1fr]">
         <div className="grid gap-6">
           <Panel title="Onde foi o dinheiro neste mês">
-            {data.cats.length === 0 ? (
+            {breakdown.length === 0 ? (
               <Empty title="Nenhuma despesa neste mês">Mande “gastei 50 no mercado” no WhatsApp ou adicione ao lado.</Empty>
             ) : (
-              <ul className="grid gap-3">
-                {data.cats.slice(0, 8).map((c) => (
-                  <li key={c.categoryId ?? "none"}>
-                    <div className="flex justify-between text-sm">
-                      <span>{c.icon} {c.name}</span>
-                      <Money cents={c.totalCents} className="font-semibold" />
-                    </div>
-                    <div className="mt-1 h-2 rounded-full bg-paper" aria-hidden="true">
-                      <div className="h-2 rounded-full bg-ink" style={{ width: `${Math.max(2, (c.totalCents / maxCat) * 100)}%` }} />
-                    </div>
-                  </li>
-                ))}
-              </ul>
+              <>
+                <div className="mb-5 flex flex-wrap items-baseline justify-between gap-2">
+                  <p className="money text-3xl font-semibold tracking-tight">{formatBRL(spentNow)}</p>
+                  <p className="text-sm text-ink-soft">
+                    {paceDelta === null ? (
+                      `em ${breakdown.length} ${breakdown.length === 1 ? "categoria" : "categorias"}`
+                    ) : (
+                      <>
+                        <span className={paceDelta > 0 ? "font-semibold text-loss" : "font-semibold text-gain"}>
+                          {paceDelta > 0 ? "▲" : "▼"} {Math.abs(paceDelta)}%
+                        </span>{" "}
+                        vs mesmo período de {prevName}
+                      </>
+                    )}
+                  </p>
+                </div>
+                <SpendingBreakdown rows={breakdown} prevLabel={prevName} />
+              </>
+            )}
+          </Panel>
+
+          <Panel title="Ritmo de gastos">
+            {data.dailyNow.length === 0 && data.dailyPrev.length === 0 ? (
+              <p className="text-sm text-ink-soft">O gráfico aparece quando houver despesas registradas.</p>
+            ) : (
+              <SpendingPace data={pace} currentLabel={monthLabel(today)} previousLabel={monthLabel(prevStart)} limitCents={monthLimit} />
             )}
           </Panel>
 
@@ -108,6 +157,25 @@ export default async function Overview() {
         </div>
 
         <div className="grid content-start gap-6">
+          <Panel title="Limites do mês" action={<Link href="/app/limites" className="text-sm font-semibold">{data.budgets.length ? "Gerenciar" : "Criar"}</Link>}>
+            {data.budgets.length === 0 ? (
+              <p className="text-sm text-ink-soft">Defina quanto quer gastar por categoria e receba um aviso no WhatsApp ao chegar em 80%. Ex.: “limite de 800 para mercado”.</p>
+            ) : (
+              <ul className="grid gap-4">
+                {data.budgets.slice(0, 6).map((b) => (
+                  <li key={b.id} className="grid gap-1.5">
+                    <div className="flex justify-between gap-2 text-sm">
+                      <span className="truncate">{b.icon} {b.name}</span>
+                      <span className="money shrink-0 tabular-nums">
+                        {formatBRL(b.spentCents)} <span className="text-ink-faint">/ {formatBRL(b.limitCents)}</span>
+                      </span>
+                    </div>
+                    <BudgetBar pct={b.pct} />
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Panel>
           <Panel title="Vencendo nos próximos 15 dias">
             {data.due.length === 0 ? (
               <p className="text-sm text-ink-soft">Nenhuma conta a pagar no período.</p>

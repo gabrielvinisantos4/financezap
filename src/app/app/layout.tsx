@@ -12,6 +12,7 @@ const NAV: NavItem[] = [
   { href: "/app/lancamentos", label: "Lançamentos", icon: "≡" },
   { href: "/app/contas", label: "Contas", icon: "▭" },
   { href: "/app/relatorios", label: "Relatórios", icon: "▤" },
+  { href: "/app/limites", label: "Limites", icon: "◔", mobile: false },
   { href: "/app/categorias", label: "Categorias", icon: "#", mobile: false },
   { href: "/app/whatsapp", label: "WhatsApp", icon: "✆", mobile: false },
   { href: "/app/assinatura", label: "Assinatura", icon: "★", mobile: false },
