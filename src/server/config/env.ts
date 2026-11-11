@@ -41,6 +41,10 @@ const schema = z.object({
   OPENAI_API_KEY: z.string().optional(),
   OPENAI_MODEL: z.string().default("gpt-4.1-mini"),
   OPENAI_TIMEOUT_MS: z.coerce.number().default(20000),
+  // Áudio (transcrição) e comprovantes (leitura de imagem/PDF)
+  OPENAI_TRANSCRIBE_MODEL: z.string().default("gpt-4o-mini-transcribe"),
+  OPENAI_VISION_MODEL: z.string().optional().transform((v) => v || undefined), // padrão: OPENAI_MODEL
+  OPENAI_TRANSCRIBE_COST_PER_MIN_USD: z.coerce.number().default(0.003),
   // Preço do modelo (USD por 1M tokens) para estimar custo — ajuste conforme a tabela vigente
   OPENAI_PRICE_INPUT_PER_M: z.coerce.number().default(0.4),
   OPENAI_PRICE_OUTPUT_PER_M: z.coerce.number().default(1.6),

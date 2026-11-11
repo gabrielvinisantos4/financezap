@@ -1,6 +1,7 @@
 import { eq, sql } from "drizzle-orm";
-import { db } from "../db/client";
-import { inboundMessages } from "../db/schema";
+import { db, withUser } from "../db/client";
+import { inboundMessages, users } from "../db/schema";
+import { todayIn } from "../finance/dates";
 import { env, integrations } from "../config/env";
 import { handleMessage } from "../agent/agent";
 import { OpenAIInterpreter, estimateAiCostMicroUsd, type Interpreter } from "../agent/llm";
@@ -11,9 +12,12 @@ import { rateLimit, withLock } from "../security/rate-limit";
 import { opEvent } from "../ops/events";
 import { consumeLinkCode, extractLinkCode, findUserByWaId } from "./linking";
 import { sendReply } from "./client";
+import { MediaError, OpenAIMediaReader, receiptToMessage, type MediaReader } from "./media";
+import type { MediaRef } from "./webhook";
 
 export type ProcessorDeps = {
   interpreter?: Interpreter | null; // injeção para testes; padrão = OpenAI se configurada
+  mediaReader?: MediaReader | null; // idem, para áudio e comprovantes
   now?: () => Date;
 };
 
@@ -23,7 +27,13 @@ function interpreterFromEnv(): Interpreter | null {
   return defaultInterpreter;
 }
 
-export type InboundPayload = { text: string | null; buttonId: string | null; type: "text" | "button" | "unsupported" };
+let defaultMediaReader: MediaReader | null | undefined;
+function mediaReaderFromEnv(): MediaReader | null {
+  if (defaultMediaReader === undefined) defaultMediaReader = integrations.openaiConfigured() ? new OpenAIMediaReader() : null;
+  return defaultMediaReader;
+}
+
+export type InboundPayload = { text: string | null; buttonId: string | null; type: "text" | "button" | "media" | "unsupported"; media?: MediaRef | null };
 
 /**
  * Processa uma mensagem recebida. Chamado pelo worker (BullMQ).
@@ -141,15 +151,25 @@ export async function replyForLinkedUser(userId: string, waMessageId: string, pa
     return { reply: { text: `Você atingiu o limite de ${ent.limits.monthlyMessages} mensagens deste mês no plano ${ent.planName}. Seus dados continuam disponíveis no painel, e você pode mudar de plano em ${appUrl}/app/assinatura.` }, userId };
   }
 
-  if (payload.type === "unsupported") {
-    return { reply: { text: "Por enquanto eu entendo só mensagens de texto. ✍️ Escreva, por exemplo: \"gastei 50 no posto\"." }, userId };
+  if (payload.type === "unsupported" || (payload.type === "media" && !payload.media)) {
+    return { reply: { text: "Esse tipo de mensagem eu ainda não entendo. 🙂 Você pode escrever, mandar um áudio ou enviar a foto/print/PDF de um comprovante." }, userId };
+  }
+
+  // Áudio e comprovante viram texto e seguem o mesmo caminho de uma mensagem escrita
+  let text = payload.text;
+  let prefix = "";
+  if (payload.type === "media" && payload.media) {
+    const media = await mediaToText(userId, payload.media, payload.text, usage.aiCalls < ent.limits.monthlyAiCalls, opts);
+    if ("reply" in media) return { reply: media.reply, userId };
+    text = media.text;
+    prefix = media.prefix;
   }
 
   const interpreter = opts.interpreter === undefined ? interpreterFromEnv() : opts.interpreter;
   try {
     const result = await handleMessage(
       userId,
-      { messageId: waMessageId, text: payload.text, buttonId: payload.buttonId },
+      { messageId: waMessageId, text, buttonId: payload.buttonId },
       { aiAllowed: usage.aiCalls < ent.limits.monthlyAiCalls, advancedReports: ent.limits.advancedReports },
       {
         interpreter,
@@ -158,9 +178,76 @@ export async function replyForLinkedUser(userId: string, waMessageId: string, pa
         onAiError: async (e) => opEvent("warn", "ai.error", "Falha na interpretação por IA; usada contingência", { error: String((e as Error)?.message ?? e).slice(0, 200) }, userId),
       },
     );
-    return { reply: result.reply, userId };
+    return { reply: prefix ? { ...result.reply, text: prefix + result.reply.text } : result.reply, userId };
   } catch (err) {
     if (err instanceof FinanceError) return { reply: { text: err.userMessage }, userId };
+    throw err;
+  }
+}
+
+const brl = (n: number) => n.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+
+/**
+ * Converte áudio ou comprovante em texto para o agente.
+ * Devolve { reply } quando a conversa termina aqui (sem IA disponível, arquivo ilegível,
+ * comprovante sem valor ou sem saber se é gasto ou recebimento).
+ */
+async function mediaToText(
+  userId: string,
+  media: MediaRef,
+  caption: string | null,
+  aiAllowed: boolean,
+  opts: ProcessorDeps,
+): Promise<{ text: string; prefix: string } | { reply: Reply }> {
+  const isAudio = media.kind === "audio";
+  const reader = opts.mediaReader === undefined ? mediaReaderFromEnv() : opts.mediaReader;
+  if (!reader) {
+    return { reply: { text: isAudio ? "Ainda não consigo ouvir áudios por aqui. ✍️ Pode escrever? Ex.: \"gastei 50 no posto\"." : "Ainda não consigo ler comprovantes por aqui. ✍️ Pode escrever? Ex.: \"paguei 120 de luz no pix\"." } };
+  }
+  if (!aiAllowed) {
+    return { reply: { text: `Você usou todas as leituras de ${isAudio ? "áudio" : "comprovante"} do seu plano neste mês. ✍️ Por texto continua funcionando: "gastei 50 no posto".` } };
+  }
+  const track = (u: { model: string; tokensIn: number; tokensOut: number; costMicroUsd: number } | null) =>
+    u ? recordUsage({ userId, type: "ai_call", model: u.model, tokensIn: u.tokensIn, tokensOut: u.tokensOut, costMicroUsd: u.costMicroUsd }) : Promise.resolve();
+
+  try {
+    const file = await reader.download(media);
+    if (isAudio) {
+      const { text, usage } = await reader.transcribe(file.data, file.mimeType);
+      await track(usage);
+      if (!text || text.length < 2) return { reply: { text: "Não consegui entender o áudio. 🎙️ Pode gravar de novo, falando perto do microfone, ou escrever?" } };
+      const shown = text.length > 300 ? text.slice(0, 299) + "…" : text;
+      return { text, prefix: `🎙️ _"${shown}"_\n\n` };
+    }
+
+    const profile = await withUser(userId, async (tx) => {
+      const [u] = await tx.select({ name: users.name, timezone: users.timezone }).from(users).where(eq(users.id, userId));
+      return u;
+    });
+    const today = todayIn(profile?.timezone ?? "America/Sao_Paulo", opts.now?.() ?? new Date());
+    const { receipt, usage } = await reader.readReceipt(file.data, file.mimeType, { userName: profile?.name ?? "", today, caption });
+    await track(usage);
+
+    const sentence = receiptToMessage(receipt);
+    if (sentence) return { text: sentence, prefix: "🧾 Li o comprovante.\n\n" };
+    if (!receipt.is_financial) {
+      return { reply: { text: "Não encontrei um comprovante nesse arquivo. 🧾 Envie o print do Pix, a foto da nota fiscal ou o PDF do comprovante." } };
+    }
+    if (!receipt.amount || receipt.amount <= 0) {
+      return { reply: { text: "Li o comprovante, mas não consegui ver o valor. 🔍 Pode mandar uma foto mais nítida ou me dizer o valor por texto?" } };
+    }
+    const plain = receipt.amount.toFixed(2).replace(".", ",");
+    const cp = receipt.counterparty;
+    return {
+      reply: {
+        text: `🧾 Li um comprovante de *${brl(receipt.amount)}*${cp ? ` (${cp})` : ""}, mas não consegui saber se foi um gasto ou um recebimento.\n\nMe responda, por exemplo:\n• "gastei ${plain}${cp ? ` com ${cp}` : ""}"\n• "recebi ${plain}${cp ? ` de ${cp}` : ""}"`,
+      },
+    };
+  } catch (err) {
+    if (err instanceof MediaError) {
+      await opEvent("warn", "media.failed", "Falha ao ler áudio/comprovante", { kind: media.kind, error: err.message.slice(0, 200) }, userId);
+      return { reply: { text: err.userMessage } };
+    }
     throw err;
   }
 }

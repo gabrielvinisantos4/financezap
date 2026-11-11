@@ -28,7 +28,7 @@ export default function Privacy() {
       <h2>Com quem compartilhamos (operadores)</h2>
       <ul>
         <li>Meta (WhatsApp Business Platform): transporte das mensagens.</li>
-        <li>OpenAI: interpretação do texto das mensagens. Enviamos o texto da mensagem, suas categorias e um resumo dos lançamentos recentes necessários para entender o pedido. [Confirmar e registrar as condições contratuais de uso e retenção de dados vigentes do provedor.]</li>
+        <li>OpenAI: interpretação do texto das mensagens, transcrição de áudios e leitura de comprovantes. Enviamos o texto da mensagem, suas categorias e um resumo dos lançamentos recentes necessários para entender o pedido; quando você manda um áudio ou comprovante, enviamos o arquivo e o seu nome (para saber se o comprovante é de um pagamento seu ou de um valor que você recebeu). O arquivo não fica guardado no FinanceZap: guardamos só o lançamento gerado. [Confirmar e registrar as condições contratuais de uso e retenção de dados vigentes do provedor.]</li>
         <li>Asaas: processamento de pagamentos.</li>
         <li>Provedores de hospedagem e banco de dados: [listar].</li>
       </ul>

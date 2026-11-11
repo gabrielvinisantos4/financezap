@@ -134,7 +134,7 @@ export async function handleMessage(userId: string, msg: IncomingMessage, caps: 
     return { reply: await resolvePending(userId, m[1], m[2] === "no" ? "cancel" : m[3] ? Number(m[3]) : "confirm", msg, today, now), usedAi: false };
   }
 
-  if (!text) return { reply: { text: "Por enquanto eu entendo mensagens de texto. Escreva, por exemplo: \"gastei 50 no posto\"." }, usedAi: false };
+  if (!text) return { reply: { text: "Não recebi nenhum texto. ✍️ Escreva, mande um áudio ou envie o comprovante. Ex.: \"gastei 50 no posto\"." }, usedAi: false };
 
   // 2) Respostas a uma pendência (sim / não / número / valor que faltava)
   if (ctx.pending) {

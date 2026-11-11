@@ -20,7 +20,7 @@ const FAQ = [
   { q: "Quem faz as contas: a inteligência artificial?", a: "Não. A IA só interpreta o que você escreveu. Totais, saldos e relatórios são calculados pelo nosso sistema, direto no banco de dados." },
   { q: "Compras no cartão contam duas vezes quando pago a fatura?", a: "Não. A compra entra como despesa no dia em que foi feita; o pagamento da fatura é registrado como movimentação entre contas e não soma de novo." },
   { q: "Posso cancelar quando quiser?", a: "Sim, pelo painel. Você continua com acesso até o fim do período já pago e pode exportar ou excluir seus dados quando quiser." },
-  { q: "Ele entende áudio e foto de comprovante?", a: "Por enquanto, só mensagens de texto." },
+  { q: "Ele entende áudio e foto de comprovante?", a: "Sim. Mande um áudio falando o gasto, ou encaminhe o print do Pix, a foto da nota fiscal ou o PDF do comprovante. Ele lê o valor, a data e com quem foi, e registra como se você tivesse escrito. Se não tiver certeza se foi gasto ou recebimento, ele pergunta antes." },
 ];
 
 export default async function Home() {
@@ -86,7 +86,7 @@ export default async function Home() {
         {/* O que ele entende */}
         <section className="mx-auto max-w-6xl px-4 py-20 sm:px-6">
           <h2 className="display max-w-2xl text-3xl sm:text-4xl">Escreva do seu jeito. Ele entende.</h2>
-          <p className="mt-3 max-w-xl text-ink-soft">Sem comandos para decorar. Valores como “mil”, “1.200” ou “50,90”, datas como “ontem” e parcelas como “em 3x” funcionam naturalmente.</p>
+          <p className="mt-3 max-w-xl text-ink-soft">Sem comandos para decorar. Valores como “mil”, “1.200” ou “50,90”, datas como “ontem” e parcelas como “em 3x” funcionam naturalmente. Prefere falar? Mande um áudio. Pagou no Pix? Encaminhe o comprovante.</p>
           <div className="mt-10 grid gap-6 md:grid-cols-3">
             {EXAMPLES.map((g) => (
               <div key={g.title}>
@@ -181,10 +181,9 @@ export default async function Home() {
             <div>
               <h2 className="display text-3xl sm:text-4xl">O que ele não faz</h2>
               <ul className="mt-6 grid gap-4 text-ink-soft">
-                <li>Não se conecta ao seu banco nem lê extratos — registra o que você contar.</li>
+                <li>Não se conecta ao seu banco nem lê extratos — registra o que você contar, escrever ou encaminhar.</li>
                 <li>Não faz pagamentos, transferências ou investimentos.</li>
                 <li>Não dá recomendação de investimento nem substitui contador.</li>
-                <li>Ainda não entende áudios nem fotos de comprovantes.</li>
               </ul>
             </div>
           </div>

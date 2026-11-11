@@ -36,8 +36,8 @@ export async function ingestWebhook(rawBody: string, signature: string | null): 
       .values({
         waMessageId: m.waMessageId,
         waId: m.waId,
-        type: m.type === "unsupported" ? m.originalType : m.type,
-        payload: { text: m.text, buttonId: m.buttonId, type: m.type },
+        type: m.type === "unsupported" || m.type === "media" ? m.originalType : m.type,
+        payload: { text: m.text, buttonId: m.buttonId, type: m.type, media: m.media },
       })
       .onConflictDoNothing({ target: inboundMessages.waMessageId })
       .returning({ id: inboundMessages.id });

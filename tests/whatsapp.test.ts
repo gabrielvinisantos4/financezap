@@ -15,6 +15,7 @@ import { INBOUND_QUEUE, closeQueues, queue } from "@/server/queue/queues";
 import { listTransactions } from "@/server/finance/queries";
 import { resetEnvCache } from "@/server/config/env";
 import { makeUser, resetDb } from "./helpers";
+import { receiptToMessage, type MediaReader, type Receipt } from "@/server/whatsapp/media";
 
 const SECRET = "test-app-secret";
 let n = 0;
@@ -174,10 +175,14 @@ describe("fluxo de mensagens", () => {
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
   });
 
-  it("áudio/imagem recebem orientação educada", async () => {
+  it("sem IA configurada, áudio e comprovante recebem orientação educada", async () => {
     await linkedSubscriber("5544999990010");
-    await deliver(waPayload("5544999990010", { type: "audio", audio: { id: "x" } }));
-    expect(lastReply()).toContain("só mensagens de texto");
+    await deliver(waPayload("5544999990010", { type: "audio", audio: { id: "x", mime_type: "audio/ogg; codecs=opus" } }));
+    expect(lastReply()).toContain("Ainda não consigo ouvir áudios");
+    await deliver(waPayload("5544999990010", { type: "image", image: { id: "y", mime_type: "image/jpeg" } }));
+    expect(lastReply()).toContain("Ainda não consigo ler comprovantes");
+    await deliver(waPayload("5544999990010", { type: "sticker", sticker: { id: "z" } }));
+    expect(lastReply()).toContain("ainda não entendo");
   });
 
   it("fila real (BullMQ + Redis): o worker processa o que chega pelo webhook", async () => {
@@ -199,5 +204,94 @@ describe("fluxo de mensagens", () => {
     } finally {
       await worker.close();
     }
+  });
+});
+
+
+/* ------------------------- áudio e comprovantes ------------------------- */
+
+function fakeReader(opts: { transcript?: string; receipt?: Receipt }): MediaReader & { seen: { userName?: string; caption?: string | null } } {
+  const seen: { userName?: string; caption?: string | null } = {};
+  return {
+    seen,
+    async download(media) {
+      return { data: Buffer.from("x"), mimeType: media.mimeType ?? "image/jpeg" };
+    },
+    async transcribe() {
+      return { text: opts.transcript ?? "", usage: { model: "fake-transcribe", tokensIn: 0, tokensOut: 0, costMicroUsd: 3000 } };
+    },
+    async readReceipt(_d, _m, ctx) {
+      seen.userName = ctx.userName;
+      seen.caption = ctx.caption;
+      return { receipt: opts.receipt!, usage: { model: "fake-vision", tokensIn: 900, tokensOut: 60, costMicroUsd: 456 } };
+    },
+  };
+}
+
+async function deliverWith(body: string, mediaReader: MediaReader) {
+  await ingestWebhook(body, sign(body));
+  const rows = await db().select().from(inboundMessages).where(eq(inboundMessages.status, "queued"));
+  for (const row of rows) await processInbound(row.id, { finalAttempt: true, interpreter: null, mediaReader });
+}
+
+const pixSent: Receipt = { is_financial: true, direction: "expense", amount: 45.9, date: "2026-11-10", counterparty: "Mercado Bom Preço", description: null, payment_method: "pix" };
+
+describe("áudio e comprovantes", () => {
+  it("monta a frase do comprovante só quando é seguro", () => {
+    expect(receiptToMessage(pixSent)).toBe("paguei 45,90 para Mercado Bom Preço via pix no dia 10/11/2026");
+    expect(receiptToMessage({ ...pixSent, direction: "income", counterparty: "João" })).toBe("recebi 45,90 de João via pix no dia 10/11/2026");
+    expect(receiptToMessage({ ...pixSent, direction: "unknown" })).toBeNull();
+    expect(receiptToMessage({ ...pixSent, amount: null })).toBeNull();
+    expect(receiptToMessage({ ...pixSent, is_financial: false })).toBeNull();
+  });
+
+  it("reconhece áudio, imagem e PDF no webhook e ignora documento de outro tipo", () => {
+    const parse = (msg: Record<string, unknown>) => parseWebhook(JSON.parse(waPayload("5544999990020", msg))).messages[0];
+    expect(parse({ type: "audio", audio: { id: "a1", mime_type: "audio/ogg; codecs=opus", voice: true } })).toMatchObject({ type: "media", media: { kind: "audio", id: "a1" } });
+    expect(parse({ type: "image", image: { id: "i1", mime_type: "image/jpeg", caption: "almoço" } })).toMatchObject({ type: "media", text: "almoço", media: { kind: "image" } });
+    expect(parse({ type: "document", document: { id: "d1", mime_type: "application/pdf", filename: "comprovante.pdf" } })).toMatchObject({ type: "media", media: { kind: "document" } });
+    expect(parse({ type: "document", document: { id: "d2", mime_type: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" } })).toMatchObject({ type: "unsupported" });
+  });
+
+  it("áudio vira lançamento e a resposta mostra o que foi entendido", async () => {
+    const u = await linkedSubscriber("5544999990021");
+    await deliverWith(waPayload("5544999990021", { type: "audio", audio: { id: "a2", mime_type: "audio/ogg; codecs=opus" } }), fakeReader({ transcript: "gastei 50 no posto" }));
+    expect(lastReply()).toContain('"gastei 50 no posto"');
+    const list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list[0]).toMatchObject({ kind: "expense", amountCents: 5000 });
+  });
+
+  it("print de Pix enviado vira despesa, usando o nome do cliente para decidir a direção", async () => {
+    const u = await linkedSubscriber("5544999990022");
+    const reader = fakeReader({ receipt: pixSent });
+    await deliverWith(waPayload("5544999990022", { type: "image", image: { id: "i2", mime_type: "image/jpeg", caption: "mercado" } }), reader);
+    expect(lastReply()).toContain("Li o comprovante");
+    expect(reader.seen.userName).toBe(u.name);
+    expect(reader.seen.caption).toBe("mercado");
+    const list = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(list[0]).toMatchObject({ kind: "expense", amountCents: 4590, occurredOn: "2026-11-10" });
+  });
+
+  it("o mesmo comprovante reenviado (mesma mensagem da Meta) não duplica", async () => {
+    const u = await linkedSubscriber("5544999990023");
+    const body = waPayload("5544999990023", { id: "wamid.REC1", type: "image", image: { id: "i3", mime_type: "image/png" } });
+    await deliverWith(body, fakeReader({ receipt: pixSent }));
+    await deliverWith(body, fakeReader({ receipt: pixSent }));
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(1);
+  });
+
+  it("comprovante sem direção clara: pergunta em vez de registrar", async () => {
+    const u = await linkedSubscriber("5544999990024");
+    await deliverWith(waPayload("5544999990024", { type: "document", document: { id: "d3", mime_type: "application/pdf" } }), fakeReader({ receipt: { ...pixSent, direction: "unknown" } }));
+    expect(lastReply()).toContain("gasto ou um recebimento");
+    expect(lastReply()).toContain("gastei 45,90 com Mercado Bom Preço");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
+  });
+
+  it("imagem que não é comprovante não gera lançamento", async () => {
+    const u = await linkedSubscriber("5544999990025");
+    await deliverWith(waPayload("5544999990025", { type: "image", image: { id: "i4", mime_type: "image/jpeg" } }), fakeReader({ receipt: { ...pixSent, is_financial: false, amount: null } }));
+    expect(lastReply()).toContain("Não encontrei um comprovante");
+    expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
   });
 });

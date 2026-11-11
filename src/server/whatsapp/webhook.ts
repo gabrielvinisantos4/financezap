@@ -22,6 +22,10 @@ export function verifySubscription(params: URLSearchParams, verifyToken = env().
   return null;
 }
 
+const mediaSchema = z
+  .object({ id: z.string(), mime_type: z.string().optional(), caption: z.string().optional(), filename: z.string().optional(), voice: z.boolean().optional() })
+  .passthrough();
+
 const messageSchema = z
   .object({
     from: z.string(),
@@ -37,6 +41,9 @@ const messageSchema = z
       })
       .optional(),
     button: z.object({ payload: z.string().optional(), text: z.string().optional() }).optional(),
+    audio: mediaSchema.optional(),
+    image: mediaSchema.optional(),
+    document: mediaSchema.optional(),
   })
   .passthrough();
 
@@ -61,15 +68,22 @@ const payloadSchema = z.object({
   ),
 });
 
+export type MediaKind = "audio" | "image" | "document";
+export type MediaRef = { kind: MediaKind; id: string; mimeType: string | null; filename: string | null };
+
 export type NormalizedMessage = {
   waMessageId: string;
   waId: string;
-  type: "text" | "button" | "unsupported";
+  type: "text" | "button" | "media" | "unsupported";
   originalType: string;
-  text: string | null;
+  text: string | null; // texto, título do botão ou legenda da mídia
   buttonId: string | null;
+  media: MediaRef | null;
   phoneNumberId: string | null;
 };
+
+/** Documentos aceitos como comprovante: PDF e imagens. */
+const DOCUMENT_MIME = /^(application\/pdf|image\/(jpeg|png|webp))$/i;
 
 export type NormalizedStatus = { waMessageId: string; status: string; error: string | null };
 
@@ -86,6 +100,7 @@ export function parseWebhook(json: unknown): { messages: NormalizedMessage[]; st
         let type: NormalizedMessage["type"] = "unsupported";
         let text: string | null = null;
         let buttonId: string | null = null;
+        let media: MediaRef | null = null;
         if (m.type === "text" && m.text) {
           type = "text";
           text = m.text.body.slice(0, 4000);
@@ -100,8 +115,16 @@ export function parseWebhook(json: unknown): { messages: NormalizedMessage[]; st
           type = "button";
           buttonId = m.button.payload.slice(0, 256);
           text = m.button.text ?? null;
+        } else if ((m.type === "audio" || m.type === "image" || m.type === "document") && m[m.type]) {
+          const ref = m[m.type]!;
+          const mimeType = ref.mime_type ?? null;
+          if (m.type !== "document" || (mimeType && DOCUMENT_MIME.test(mimeType))) {
+            type = "media";
+            media = { kind: m.type, id: ref.id.slice(0, 128), mimeType, filename: ref.filename?.slice(0, 200) ?? null };
+            text = ref.caption ? ref.caption.slice(0, 1000) : null;
+          }
         }
-        messages.push({ waMessageId: m.id, waId: m.from, type, originalType: m.type, text, buttonId, phoneNumberId });
+        messages.push({ waMessageId: m.id, waId: m.from, type, originalType: m.type, text, buttonId, media, phoneNumberId });
       }
       for (const s of change.value.statuses ?? []) {
         statuses.push({ waMessageId: s.id, status: s.status, error: s.errors?.length ? JSON.stringify(s.errors).slice(0, 500) : null });
