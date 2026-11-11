@@ -451,8 +451,19 @@ export async function deleteEntry(
  * Apaga todos os lançamentos da pessoa de uma vez (exclusão lógica, com histórico).
  * Contas, categorias, limites e contas fixas continuam cadastrados.
  */
-export async function deleteAllEntries(tx: Tx, userId: string, actor: Actor, kind: "expense" | "income" | null = null): Promise<number> {
-  const scope = and(eq(transactions.userId, userId), isNull(transactions.deletedAt), kind ? eq(transactions.kind, kind) : undefined);
+export async function deleteAllEntries(
+  tx: Tx,
+  userId: string,
+  actor: Actor,
+  kind: "expense" | "income" | null = null,
+  range: { from: string; to: string } | null = null,
+): Promise<number> {
+  const scope = and(
+    eq(transactions.userId, userId),
+    isNull(transactions.deletedAt),
+    kind ? eq(transactions.kind, kind) : undefined,
+    range ? sql`${transactions.occurredOn} between ${range.from} and ${range.to}` : undefined,
+  );
   const befores = await tx.select().from(transactions).where(scope);
   if (!befores.length) return 0;
   const deleted = await tx

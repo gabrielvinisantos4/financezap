@@ -349,7 +349,12 @@ describe("contas fixas pelo WhatsApp", () => {
     // sem dizer o tipo: oferece só gastos, só recebimentos ou tudo
     const menu = await send(u.id, "apaga todos os meus lançamentos");
     expect(menu.reply.text).toContain("O que você quer apagar?");
-    expect(menu.reply.buttons?.map((b) => b.title)).toEqual(["Só gastos", "Só recebimentos", "Tudo"]);
+    expect(menu.reply.buttons?.map((b) => b.title)).toEqual(["Só gastos", "Só recebimentos", "Tudo", "Cancelar"]);
+    expect((await send(u.id, "4")).reply.text).toContain("cancelei");
+    expect(i("cancela todos os lançamentos")).toMatchObject({ intent: "delete", target: { reference: "all", kind: null, period: null } });
+    expect(i("cancela todos os lançamentos do mês")).toMatchObject({ intent: "delete", target: { reference: "all", period: { type: "this_month" } } });
+    expect(i("apaga todos os gastos de hoje")).toMatchObject({ intent: "delete", target: { reference: "all", kind: "expense", period: { type: "today" } } });
+    expect((await send(u.id, "cancela todos os lançamentos")).reply.text).toContain("O que você quer apagar?");
     const ask = await send(u.id, "tudo");
     expect(ask.reply.text).toContain("todos os 2 lançamentos");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(2);
@@ -368,6 +373,18 @@ describe("contas fixas pelo WhatsApp", () => {
     expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 1 lançamento");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
     expect((await send(u.id, "apaga todos os meus lançamentos")).reply.text).toContain("não tem lançamentos");
+  });
+
+  it("apagar por período: 'apaga todos os gastos de hoje' só apaga os de hoje", async () => {
+    const u = await makeUser();
+    await send(u.id, "gastei 20 no mercado ontem");
+    await send(u.id, "gastei 50 no posto");
+    const ask = await send(u.id, "apaga todos os gastos de hoje");
+    expect(ask.reply.text).toContain("todos os seus gastos");
+    expect((await send(u.id, "sim")).reply.text).toContain("Apaguei 1 gasto");
+    const left = await withUser(u.id, (tx) => listTransactions(tx, u.id));
+    expect(left).toHaveLength(1);
+    expect(left[0]).toMatchObject({ amountCents: 2000 });
   });
 
   it("receita fixa: cadastra o social media, 'recebi o social media' dá baixa sem lançar em dobro", async () => {

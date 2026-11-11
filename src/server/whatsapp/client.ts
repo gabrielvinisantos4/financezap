@@ -19,8 +19,24 @@ function truncate(s: string, n: number) {
   return s.length > n ? s.slice(0, n - 1) + "…" : s;
 }
 
-/** Monta o corpo da Cloud API: texto simples ou botões de resposta (máx. 3). */
+/** Monta o corpo da Cloud API: texto simples, botões de resposta (até 3) ou lista (4 a 10 opções). */
 export function buildMessageBody(to: string, reply: Reply): Record<string, unknown> {
+  if (reply.buttons && reply.buttons.length > 3) {
+    return {
+      messaging_product: "whatsapp",
+      recipient_type: "individual",
+      to,
+      type: "interactive",
+      interactive: {
+        type: "list",
+        body: { text: truncate(reply.text, 1024) },
+        action: {
+          button: "Escolher",
+          sections: [{ title: "Opções", rows: reply.buttons.slice(0, 10).map((b) => ({ id: b.id.slice(0, 200), title: truncate(b.title, 24) })) }],
+        },
+      },
+    };
+  }
   if (reply.buttons?.length) {
     return {
       messaging_product: "whatsapp",

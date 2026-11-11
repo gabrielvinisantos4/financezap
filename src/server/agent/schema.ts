@@ -65,6 +65,8 @@ export const targetSchema = z.object({
   amount: z.number().positive().nullable(),
   description: z.string().max(120).nullable(),
   date: isoDate.nullable(),
+  /** Só para reference=all: limita a um período ("do mês", "de hoje"). */
+  period: z.lazy(() => periodSchema).nullable().optional(),
 });
 
 export const changesSchema = z.object({
@@ -171,6 +173,16 @@ export const interpretationJsonSchema = obj({
       amount: nullable(num),
       description: nullable(str),
       date: nullable(date),
+      period: nullable(
+        obj({
+          type: { type: "string", enum: [...PERIOD_TYPES] },
+          month: nullable(int),
+          year: nullable(int),
+          days: nullable(int),
+          from: nullable(date),
+          to: nullable(date),
+        }),
+      ),
     }),
   ),
   changes: nullable(
