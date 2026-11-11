@@ -309,6 +309,7 @@ export default async function Home() {
         <nav aria-label="Rodapé">
           <Link href="/termos">Termos de uso</Link>
           <Link href="/privacidade">Privacidade</Link>
+          <Link href="/entrar?voltar=/admin">Área restrita</Link>
           <Link href="/afiliados">Seja afiliado</Link>
           <Link href="/entrar">Entrar</Link>
         </nav>

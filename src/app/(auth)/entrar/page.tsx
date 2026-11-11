@@ -7,16 +7,17 @@ import { currentUser } from "@/server/auth/session";
 
 export const metadata = { title: "Entrar" };
 
-const safeBack = (v?: string) => (v && /^\/app(\/[a-z-]*)?$/.test(v) ? v : "");
+const safeBack = (v?: string) => (v && /^\/(app|admin)(\/[a-z-]*)?$/.test(v) ? v : "");
 
 export default async function LoginPage({ searchParams }: { searchParams: Promise<{ voltar?: string }> }) {
   const back = safeBack((await searchParams).voltar);
   const u = await currentUser();
-  if (u) redirect(back || (u.role === "user" ? "/app" : "/admin"));
+  const restricted = back.startsWith("/admin");
+  if (u) redirect(u.role === "user" ? (restricted ? "/app" : back || "/app") : back || "/admin");
   return (
     <>
-      <h1 className="text-[2rem] font-bold tracking-[-0.04em]">Entrar</h1>
-      <p className="mt-1.5 text-ink-soft">Bom te ver de novo.</p>
+      <h1 className="text-[2rem] font-bold tracking-[-0.04em]">{restricted ? "Área restrita" : "Entrar"}</h1>
+      <p className="mt-1.5 text-ink-soft">{restricted ? "Acesso da equipe do FinanceZap." : "Bom te ver de novo."}</p>
       <div className="mt-7">
         <ActionForm action={loginAction}>
           {back && <input type="hidden" name="back" value={back} />}

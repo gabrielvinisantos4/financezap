@@ -58,7 +58,9 @@ export async function loginAction(_: FormState, form: FormData): Promise<FormSta
   if (user.status === "deleted") return { error: "E-mail ou senha incorretos." };
   await startSession(user.id);
   const back = String(form.get("back") ?? "");
-  redirect(/^\/app(\/[a-z-]*)?$/.test(back) ? back : user.role === "user" ? "/app" : "/admin");
+  const isAdmin = user.role !== "user";
+  if (/^\/admin(\/[a-z-]*)?$/.test(back)) redirect(isAdmin ? back : "/app");
+  redirect(/^\/app(\/[a-z-]*)?$/.test(back) ? back : isAdmin ? "/admin" : "/app");
 }
 
 export async function logoutAction() {

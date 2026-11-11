@@ -147,6 +147,7 @@ export default async function AffiliateLanding() {
           <Link href="/">Início</Link>
           <Link href="/termos#afiliados">Regras do programa</Link>
           <Link href="/privacidade">Privacidade</Link>
+          <Link href="/entrar?voltar=/admin">Área restrita</Link>
         </nav>
         <span>© {new Date().getFullYear()} FinanceZap · CNPJ {COMPANY.cnpj}</span>
       </footer>

@@ -78,7 +78,8 @@ export function can(u: User, perm: AdminPermission): boolean {
 /** Área administrativa: só papéis administrativos; caso contrário 404 (não revela a rota). */
 export async function requireAdmin(perm: AdminPermission = "view_metrics"): Promise<User> {
   const u = await currentUser();
-  if (!u || !can(u, perm)) {
+  if (!u) redirect("/entrar?voltar=/admin");
+  if (!can(u, perm)) {
     const { notFound } = await import("next/navigation");
     notFound();
   }
