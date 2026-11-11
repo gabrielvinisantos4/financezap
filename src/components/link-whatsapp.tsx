@@ -9,8 +9,8 @@ export function LinkWhatsapp({ hasBusinessNumber }: { hasBusinessNumber: boolean
   return (
     <div>
       {!code ? (
-        <button className="btn btn-coin" disabled={pending} onClick={() => start(async () => setCode(await createLinkCodeAction()))}>
-          {pending ? "Gerando…" : "Gerar código de vínculo"}
+        <button className="btn btn-primary" disabled={pending} onClick={() => start(async () => setCode(await createLinkCodeAction()))}>
+          {pending ? "Gerando…" : "Vincular meu WhatsApp"}
         </button>
       ) : (
         <div className="grid gap-4">
@@ -20,7 +20,7 @@ export function LinkWhatsapp({ hasBusinessNumber }: { hasBusinessNumber: boolean
           </div>
           {code.waLink && hasBusinessNumber ? (
             <a href={code.waLink} target="_blank" rel="noopener noreferrer" className="btn btn-primary w-fit">
-              Abrir o WhatsApp com o código
+              Abrir o WhatsApp e enviar
             </a>
           ) : (
             <p className="text-sm text-ink-soft">Envie a mensagem “Vincular {code.code}” para o número do FinanceZap.</p>

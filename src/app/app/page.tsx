@@ -4,6 +4,10 @@ import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
 import { addDays, addMonths, daysInMonth, endOfMonth, formatBR, monthLabel, monthName, resolvePeriod, startOfMonth } from "@/server/finance/dates";
 import { appContext } from "@/server/app-context";
+import { getLinkedNumber } from "@/server/whatsapp/linking";
+import { env } from "@/server/config/env";
+import { LinkWhatsapp } from "@/components/link-whatsapp";
+import { Icon } from "@/components/icons";
 import { Empty, Money, Panel, PanelLink, Stat } from "@/components/ui";
 import { Ring } from "@/components/ring";
 import { EntryForm } from "@/components/entry-form";
@@ -15,6 +19,7 @@ export const metadata = { title: "Visão geral" };
 
 export default async function Overview() {
   const { user, today } = await appContext();
+  const linked = await getLinkedNumber(user.id);
   const month = resolvePeriod({ type: "this_month" }, today);
   // Mês anterior: inteiro para o gráfico de ritmo; até o mesmo dia para comparar categorias
   const prevStart = startOfMonth(addMonths(today, -1));
@@ -76,6 +81,28 @@ export default async function Overview() {
         </div>
         <span className="card inline-flex h-10 items-center rounded-full px-4 text-sm font-semibold capitalize">{monthLabel(today)}</span>
       </header>
+
+      {!linked && (
+        <section aria-labelledby="vincular-t" className="card relative overflow-hidden p-5 sm:p-7" style={{ boxShadow: "inset 0 0 0 1.5px var(--color-gain), var(--shadow-md)" }}>
+          <div className="pointer-events-none absolute -right-16 -top-24 h-64 w-64 rounded-full bg-gain opacity-[0.12] blur-3xl" aria-hidden="true" />
+          <div className="relative grid gap-5 sm:grid-cols-[auto_1fr] sm:items-start sm:gap-6">
+            <span className="grid h-14 w-14 place-items-center rounded-[18px] bg-gain-soft text-gain">
+              <Icon name="chat" size={26} />
+            </span>
+            <div className="grid gap-4">
+              <div>
+                <h2 id="vincular-t" className="text-[1.35rem] font-bold tracking-[-0.03em]">
+                  Conecte seu WhatsApp
+                </h2>
+                <p className="mt-1 max-w-xl text-ink-soft">
+                  É só tocar no botão, abrir o WhatsApp e enviar a mensagem que já vem pronta. Em segundos o FinanceZap confirma e você já pode mandar seus gastos.
+                </p>
+              </div>
+              <LinkWhatsapp hasBusinessNumber={Boolean(env().WHATSAPP_BUSINESS_NUMBER)} />
+            </div>
+          </div>
+        </section>
+      )}
 
       <section aria-label="Resumo do mês" className="grid grid-cols-2 gap-3 sm:gap-4 xl:grid-cols-4">
         <Stat icon="wallet" label="Disponível">
