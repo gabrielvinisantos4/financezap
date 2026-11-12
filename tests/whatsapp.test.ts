@@ -113,7 +113,7 @@ describe("fluxo de mensagens", () => {
     const { code } = await createLinkCode(u.id);
     await deliver(textMsg("5544999990004", `Vincular ${code}`));
     await deliver(textMsg("5544999990004", "gastei 50 no posto"));
-    expect(lastReply()).toContain("não tem uma assinatura ativa");
+    expect(lastReply()).toContain("ainda não está ativa");
     expect(await withUser(u.id, (tx) => listTransactions(tx, u.id))).toHaveLength(0);
   });
 

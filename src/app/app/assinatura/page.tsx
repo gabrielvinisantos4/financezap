@@ -27,7 +27,7 @@ const RETURN_MSG: Record<string, [string, "gain" | "coin"]> = {
   processando: ["Recebemos seus dados no Asaas. Assim que o cartão for aprovado, o acesso é liberado automaticamente — costuma levar poucos segundos. Atualize esta página.", "gain"],
   cancelado: ["Pagamento cancelado. Nenhuma cobrança foi feita. Você pode escolher outro plano ou forma de pagamento abaixo.", "coin"],
   expirado: ["O link de pagamento expirou. Gere um novo abaixo.", "coin"],
-  teste: ["Teste grátis liberado! Pode usar à vontade. O primeiro Pix chega no seu e-mail no último dia do teste.", "gain"],
+  teste: ["Teste grátis liberado! Pode usar à vontade. No fim do teste, é só voltar aqui e pagar pelo Pix ou cartão para continuar.", "gain"],
 };
 
 export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ plano?: string; pagamento?: string }> }) {
@@ -73,7 +73,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
                       : `Teste grátis em andamento. A primeira cobrança no cartão é em ${firstCharge ? fmt(firstCharge) : sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd.getTime() - 86400_000).toLocaleDateString("pt-BR", { timeZone: user.timezone }) : "breve"}. Cancele antes disso e não paga nada.`}
                 </p>
               ) : (
-                sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>
+                sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {new Date(sub.currentPeriodEnd.getTime() - (isTrial ? 1 : 0)).toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>
               )}
               {pendingInvoice?.invoiceUrl && (
                 <a href={pendingInvoice.invoiceUrl} target="_blank" rel="noopener noreferrer" className="btn btn-coin mt-4">
@@ -107,7 +107,8 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
                 <CheckoutForm
                   initial={plano}
                   trialUntil={trialUntil ? fmt(trialUntil) : null}
-                  pixTrialUntil={trialUntil ? fmt(addDays(trialUntil, -1) > todayIn(user.timezone) ? addDays(trialUntil, -1) : trialUntil) : null}
+                  pixTrialUntil={trialUntil ? fmt(isTrial && sub?.currentPeriodEnd ? todayIn(user.timezone, new Date(sub.currentPeriodEnd.getTime() - 1)) : addDays(trialUntil, -1)) : null}
+                  inTrial={isTrial}
                   plans={plans.map((p) => {
                     const saving = p.priceMonthlyCents * 12 - p.priceYearlyCents;
                     return {

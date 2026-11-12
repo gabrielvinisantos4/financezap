@@ -6,6 +6,7 @@ import { handleAsaasWebhook, startCheckout } from "@/server/billing/subscription
 import { setAsaasFetcher } from "@/server/billing/asaas";
 import { affiliateDashboard, approvePixPayout, attachReferral, createAffiliate, createPixPayouts, normalizePixKey, pixBalance, registerClick, setAffiliatePix, setAffiliateStatus, setAffiliateWallet, splitForCustomer } from "@/server/affiliates/affiliates";
 import { makeUser, resetDb } from "./helpers";
+import { resetEnvCache } from "@/server/config/env";
 
 const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
 const WALLET = "0b1c2d3e-4f50-4a6b-8c7d-9e0f1a2b3c4d";
@@ -67,10 +68,17 @@ async function makeAffiliate(code = "maria") {
 }
 
 beforeEach(async () => {
+  // cenários de cobrança imediata (sem teste grátis)
+  process.env.CARD_TRIAL_DAYS = "0";
+  resetEnvCache();
   await resetDb();
   await db().insert(plans).values({ slug: "basico", name: "Básico", priceMonthlyCents: 1690, priceYearlyCents: 16900, active: true, limits: { monthlyMessages: 300, monthlyAiCalls: 300, maxAccounts: 3, customCategories: false, advancedReports: false } });
 });
-afterEach(() => setAsaasFetcher(null));
+afterEach(() => {
+  setAsaasFetcher(null);
+  delete process.env.CARD_TRIAL_DAYS;
+  resetEnvCache();
+});
 afterAll(closeDb);
 
 describe("programa de afiliados", () => {

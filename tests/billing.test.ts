@@ -218,28 +218,24 @@ describe("assinaturas com Asaas", () => {
     const end = todayIn("America/Sao_Paulo", new Date(Date.now() + 10 * 86400_000));
     expect(await cardTrialFirstCharge(u.id)).toBe(end);
   });
-  it("teste grátis no Pix: libera na hora sem cobrar, 1º Pix vence no 15º dia e trava no 16º se não pagar", async () => {
+  it("teste grátis no Pix: libera na hora sem Asaas e sem CPF; trava no 16º dia; depois o Pix vence no fim do teste", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
     const today = todayIn("America/Sao_Paulo");
-    const lastDay = addDays(today, 14);
-    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "" });
     expect(r.redirectUrl).toContain("/app/assinatura?pagamento=teste");
-    const created = asaas.calls.find((c) => c === "POST /subscriptions");
-    expect(created).toBeTruthy();
+    expect(asaas.calls).toHaveLength(0);
     expect(await getEntitlement(u.id)).toMatchObject({ active: true, planSlug: "basico" });
-    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
-    expect(sub.currentPeriodEnd?.toISOString()).toBe(`${addDays(lastDay, 1)}T03:00:00.000Z`);
-    // dia 16 (sem pagar): bloqueado, sem tolerância
-    const day16 = new Date(`${addDays(lastDay, 1)}T15:00:00Z`);
+    const day15 = new Date(`${addDays(today, 14)}T23:00:00Z`); // 20h do 15º dia em SP
+    const day16 = new Date(`${addDays(today, 15)}T15:00:00Z`);
+    expect((await getEntitlement(u.id, day15)).active).toBe(true);
     expect((await getEntitlement(u.id, day16)).active).toBe(false);
-    // atraso do 1º Pix também não dá tolerância
-    asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "OVERDUE" });
-    await handleAsaasWebhook(event("e_ov", "PAYMENT_OVERDUE", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "OVERDUE", value: 19.9 }), TOKEN);
-    expect((await getEntitlement(u.id, day16)).active).toBe(false);
-    // pagou: volta
-    asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: addDays(lastDay, 1) });
-    await handleAsaasWebhook(event("e_pd", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
-    expect((await getEntitlement(u.id, day16)).active).toBe(true);
+    // não ganha outro teste
+    expect(await cardTrialFirstCharge(u.id)).toBe(addDays(today, 15));
+    // durante o teste, pagar com Pix agenda a cobrança para o fim do teste (CPF obrigatório)
+    await expect(startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "" })).rejects.toThrow(/CPF/);
+    const r2 = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    expect(r2.redirectUrl).toContain("asaas.com/i/");
+    expect(asaas.calls).toContain("POST /subscriptions");
   });
 });

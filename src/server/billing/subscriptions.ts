@@ -42,7 +42,7 @@ export const checkoutSchema = z.object({
   cpfCnpj: z
     .string()
     .transform((v) => v.replace(/\D/g, ""))
-    .refine((v) => v.length === 11 || v.length === 14, "CPF ou CNPJ inválido"),
+    .refine((v) => v.length === 0 || v.length === 11 || v.length === 14, "CPF ou CNPJ inválido"),
 });
 
 export type CheckoutResult = { redirectUrl: string | null; subscriptionId: string };
@@ -126,6 +126,19 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
     await db().update(subscriptions).set({ status: "expired" }).where(eq(subscriptions.id, p.id));
   }
 
+  // Teste grátis no Pix: libera os dias de teste na hora, sem passar pelo Asaas e sem pedir CPF.
+  // No fim do teste a pessoa escolhe como pagar; se não pagar, o acesso trava no dia seguinte.
+  const trialUntil = await cardTrialFirstCharge(userId);
+  const inManualTrial = current?.provider === "manual" && current.status === "active";
+  if (input.method === "pix" && trialUntil && !inManualTrial) {
+    await db()
+      .insert(subscriptions)
+      .values({ userId, planId: plan.id, cycle: input.cycle, status: "active", priceCents: 0, provider: "manual", currentPeriodEnd: new Date(`${trialUntil}T03:00:00Z`) });
+    await opEvent("info", "billing.trial_started", "Teste grátis iniciado (Pix)", { until: trialUntil }, userId);
+    return { redirectUrl: `${env().APP_URL}/app/assinatura?pagamento=teste`, subscriptionId: "" };
+  }
+  if (!input.cpfCnpj) throw new FinanceError("invalid", "Informe o CPF ou CNPJ do pagador.");
+
   let customerId: string;
   try {
     customerId = await ensureAsaasCustomer(userId, input.cpfCnpj);
@@ -162,9 +175,9 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
     if (input.method === "pix") {
       // Teste grátis no Pix: usa os dias de teste e o 1º Pix vence no último dia deles.
       // Se não pagar, o acesso trava no dia seguinte (sem a tolerância de quem já pagou).
-      const trialUntil = await cardTrialFirstCharge(userId);
+      // Em teste: o 1º Pix vence no último dia do teste
       const today = todayIn(user.timezone);
-      const pixDue = trialUntil ? (addDays(trialUntil, -1) > today ? addDays(trialUntil, -1) : trialUntil) : null;
+      const pixDue = trialUntil && trialUntil > today ? trialUntil : null;
       const remote = await withSplit((split) =>
         asaas.createPixSubscription({
           customer: customerId,
@@ -180,15 +193,10 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
       const list = await asaas.listSubscriptionPayments(remote.id).catch(() => ({ data: [] as AsaasPayment[] }));
       const first = list.data[0];
       if (first) await upsertPayment(userId, sub.id, first);
-      if (pixDue) {
-        await startCardTrial({ ...sub, providerSubscriptionId: remote.id }, pixDue);
-        return { redirectUrl: `${env().APP_URL}/app/assinatura?pagamento=teste`, subscriptionId: sub.id };
-      }
       return { redirectUrl: first?.invoiceUrl ?? null, subscriptionId: sub.id };
     }
 
     const back = `${env().APP_URL}/app/assinatura`;
-    const trialUntil = await cardTrialFirstCharge(userId);
     const checkout = await withSplit((splits) => asaas.createRecurringCardCheckout({
       splits,
       customer: customerId,

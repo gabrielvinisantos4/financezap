@@ -28,7 +28,9 @@ export async function getEntitlement(userId: string, now: Date = new Date()): Pr
     const inGrace = s.graceUntil !== null && s.graceUntil > now;
     // Assinatura ativa ganha a tolerância configurada após o fim do período,
     // cobrindo o intervalo entre o vencimento e a chegada do webhook de atraso.
-    let periodOk = s.currentPeriodEnd === null || s.currentPeriodEnd.getTime() + graceMs > now.getTime() || inGrace;
+    // Teste/cortesia manual não tem tolerância: acaba no fim do período
+    const tolerance = s.provider === "manual" ? 0 : graceMs;
+    let periodOk = s.currentPeriodEnd === null || s.currentPeriodEnd.getTime() + tolerance > now.getTime() || inGrace;
     // Teste grátis no Pix que nunca foi pago: trava logo após o fim do teste, sem tolerância
     if (periodOk && !inGrace && s.status === "active" && s.provider === "asaas" && s.paymentMethod === "pix" && s.currentPeriodEnd && s.currentPeriodEnd <= now) {
       const [paid] = await db()
@@ -45,6 +47,8 @@ export async function getEntitlement(userId: string, now: Date = new Date()): Pr
   const latest = rows[0].s;
   if (latest.status === "pending") return { active: false, reason: "pending_payment" };
   if (latest.status === "past_due") return { active: false, reason: "past_due" };
+  // Só tentativas que nunca foram liberadas (ex.: pagamento não concluído): ainda não assinou
+  if (rows.every(({ s }) => s.status === "expired" && s.currentPeriodEnd === null)) return { active: false, reason: "no_subscription" };
   return { active: false, reason: "canceled" };
 }
 
@@ -78,7 +82,7 @@ export async function recordUsage(input: { userId: string | null; type: "ai_call
 }
 
 export const INACTIVE_MESSAGES: Record<Exclude<Entitlement, { active: true }>["reason"], string> = {
-  no_subscription: "Sua conta ainda não tem uma assinatura ativa. Escolha um plano no painel para começar: ",
+  no_subscription: "Sua conta ainda não está ativa. Comece seu teste grátis de 15 dias (sem pagar nada agora) em: ",
   pending_payment: "Estamos aguardando a confirmação do seu pagamento. Assim que o pagamento for confirmado, seu acesso é liberado automaticamente. Acompanhe em: ",
   past_due: "Sua assinatura está com pagamento em atraso e o acesso foi pausado. Regularize em: ",
   canceled: "Sua assinatura foi encerrada. Para voltar a usar, reative em: ",
