@@ -79,7 +79,7 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
           <span>CPF ou CNPJ do pagador</span>
           <input className="input money" name="cpfCnpj" inputMode="numeric" autoComplete="off" value={doc} onChange={(e) => setDoc(cpfMask(e.target.value))} placeholder="000.000.000-00" required />
         </label>
-        <p className="text-xs text-ink-faint">Exigido pelo Asaas para emitir a cobrança. Não fica guardado no FinanceZap.</p>
+        <p className="text-xs text-ink-faint">🔒 Por que pedimos? Toda cobrança no Brasil precisa do CPF de quem paga (regra do Banco Central). Ele vai direto para o Asaas, a instituição que processa o pagamento, e não fica salvo no FinanceZap.</p>
       </div>}
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">
