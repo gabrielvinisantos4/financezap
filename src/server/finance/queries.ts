@@ -63,6 +63,45 @@ export async function totalsByCategory(tx: Tx, userId: string, p: Period, kind: 
   return rows.map((r) => ({ categoryId: r.categoryId, name: r.name, icon: r.icon, slug: r.slug, totalCents: Number(r.total), count: r.count })).filter((r) => r.totalCents !== 0);
 }
 
+export const CARDS_KEY = "cartoes";
+
+/**
+ * Gastos por categoria com os cartões à parte: compras no cartão (crédito, débito ou numa
+ * conta do tipo cartão) que não têm categoria própria — "Outros"/sem categoria — viram a
+ * fatia "Cartões". Compras no cartão com categoria (ex.: Mercado) continuam na categoria.
+ */
+export async function expensesByCategoryWithCards(tx: Tx, userId: string, p: Period): Promise<CategoryTotal[]> {
+  const sign = sql`case when ${transactions.kind} = 'refund' then -${transactions.amountCents} else ${transactions.amountCents} end`;
+  const isCard = sql<boolean>`(${transactions.paymentMethod} in ('credito','debito') or ${accounts.type} = 'credit_card')
+    and (${categories.slug} is null or ${categories.slug} = 'outros')`;
+  const rows = await tx
+    .select({
+      card: sql<boolean>`${isCard}`,
+      categoryId: transactions.categoryId,
+      name: sql<string>`coalesce(${categories.name}, 'Sem categoria')`,
+      icon: sql<string>`coalesce(${categories.icon}, '•')`,
+      slug: categories.slug,
+      total: sql<number>`sum(${sign})::bigint`,
+      count: sql<number>`count(*) filter (where ${transactions.kind} <> 'refund')::int`,
+    })
+    .from(transactions)
+    .leftJoin(categories, eq(categories.id, transactions.categoryId))
+    .leftJoin(accounts, eq(accounts.id, transactions.accountId))
+    .where(and(eq(transactions.userId, userId), alive, eq(transactions.status, "paid"), inArray(transactions.kind, ["expense", "refund"]), gte(transactions.occurredOn, p.from), lte(transactions.occurredOn, p.to)))
+    .groupBy(sql`1`, transactions.categoryId, categories.name, categories.icon, categories.slug);
+  const out = new Map<string, CategoryTotal>();
+  for (const r of rows) {
+    const key = r.card ? CARDS_KEY : (r.categoryId ?? "none");
+    const cur = out.get(key) ?? (r.card
+      ? { categoryId: CARDS_KEY, name: "Cartões", icon: "💳", slug: CARDS_KEY, totalCents: 0, count: 0 }
+      : { categoryId: r.categoryId, name: r.name, icon: r.icon, slug: r.slug, totalCents: 0, count: 0 });
+    cur.totalCents += Number(r.total);
+    cur.count += r.count;
+    out.set(key, cur);
+  }
+  return [...out.values()].filter((r) => r.totalCents !== 0).sort((a, b) => b.totalCents - a.totalCents);
+}
+
 export async function totalForCategory(tx: Tx, userId: string, p: Period, kind: "income" | "expense", categorySlug: string) {
   const all = await totalsByCategory(tx, userId, p, kind);
   return all.find((c) => c.slug === categorySlug) ?? null;

@@ -4,7 +4,7 @@ import { handleMessage, type AgentDeps } from "@/server/agent/agent";
 import { RuleInterpreter, interpretByRules } from "@/server/agent/fallback";
 import { AIError, type Interpreter } from "@/server/agent/llm";
 import { emptyInterpretation, interpretationSchema, type Interpretation } from "@/server/agent/schema";
-import { periodSummary, listTransactions, totalsByCategory } from "@/server/finance/queries";
+import { periodSummary, listTransactions, totalsByCategory, expensesByCategoryWithCards } from "@/server/finance/queries";
 import { resolvePeriod } from "@/server/finance/dates";
 import { createAccount } from "@/server/finance/engine";
 import { makeUser, resetDb, TODAY } from "./helpers";
@@ -447,5 +447,15 @@ describe("forma de pagamento", () => {
     const all = await send(u.id, "quanto gastei por forma de pagamento?");
     expect(all.reply.text).toContain("Cartão de crédito: R$ 1.000,00");
     expect(all.reply.text).toContain("Dinheiro: R$ 30,00");
+  });
+  it("gastos por categoria: compras no cartão sem categoria aparecem como 'Cartões'; com categoria continuam nela", async () => {
+    const u = await makeUser();
+    await send(u.id, "1.000 no cartão, 50 no pix");
+    await send(u.id, "Gastei 80 no mercado no cartão");
+    const cats = await withUser(u.id, (tx) => expensesByCategoryWithCards(tx, u.id, month));
+    const by = Object.fromEntries(cats.map((c) => [c.name, c.totalCents]));
+    expect(by["Cartões"]).toBe(100000);
+    expect(by["Mercado"]).toBe(8000);
+    expect(by["Outros"]).toBe(5000);
   });
 });

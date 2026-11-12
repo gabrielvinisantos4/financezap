@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withUser } from "@/server/db/client";
-import { availability, dailyExpenses, listTransactions, payables, periodSummary, totalsByCategory, totalsByPaymentMethod } from "@/server/finance/queries";
+import { availability, dailyExpenses, listTransactions, payables, periodSummary, expensesByCategoryWithCards, totalsByPaymentMethod } from "@/server/finance/queries";
 import { isPaymentMethod, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
 import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
@@ -31,9 +31,9 @@ export default async function Overview() {
   const data = await withUser(user.id, async (tx) => ({
     avail: await availability(tx, user.id, today),
     summary: await periodSummary(tx, user.id, month),
-    cats: await totalsByCategory(tx, user.id, month, "expense"),
+    cats: await expensesByCategoryWithCards(tx, user.id, month),
     methods: await totalsByPaymentMethod(tx, user.id, month, "expense"),
-    prevCats: await totalsByCategory(tx, user.id, { from: prevStart, to: prevSameDay, label: "" }, "expense"),
+    prevCats: await expensesByCategoryWithCards(tx, user.id, { from: prevStart, to: prevSameDay, label: "" }),
     dailyNow: await dailyExpenses(tx, user.id, { from: month.from, to: today, label: "" }),
     dailyPrev: await dailyExpenses(tx, user.id, { from: prevStart, to: prevEnd, label: "" }),
     budgets: await budgetStatuses(tx, user.id, today),

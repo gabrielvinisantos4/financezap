@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { withUser } from "@/server/db/client";
-import { monthlyEvolution, periodSummary, totalsByCategory, totalsByParty } from "@/server/finance/queries";
+import { expensesByCategoryWithCards, monthlyEvolution, periodSummary, totalsByCategory, totalsByParty } from "@/server/finance/queries";
 import { addMonths, monthLabel } from "@/server/finance/dates";
 import { appContext, monthFromParam } from "@/server/app-context";
 import { getEntitlement } from "@/server/billing/entitlements";
@@ -17,7 +17,7 @@ export default async function Reports({ searchParams }: { searchParams: Promise<
   const advanced = ent.active && ent.limits.advancedReports;
   const d = await withUser(user.id, async (tx) => ({
     summary: await periodSummary(tx, user.id, period),
-    expense: await totalsByCategory(tx, user.id, period, "expense"),
+    expense: await expensesByCategoryWithCards(tx, user.id, period),
     income: await totalsByCategory(tx, user.id, period, "income"),
     merchants: await totalsByParty(tx, user.id, period, "expense"),
     clients: await totalsByParty(tx, user.id, period, "income"),

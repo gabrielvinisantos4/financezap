@@ -26,6 +26,7 @@ import {
   recentEntries,
   totalForCategory,
   totalsByCategory,
+  expensesByCategoryWithCards,
   totalsByParty,
   totalsByPaymentMethod,
 } from "../finance/queries";
@@ -632,9 +633,9 @@ async function runQuery(userId: string, q: Query, caps: AgentCapabilities, today
         return fmt.totalReply("income", period.label, s.incomeCents, count);
       }
       case "by_category":
-        return fmt.categoriesReply(period.label, "expense", await totalsByCategory(tx, userId, period, "expense"));
+        return fmt.categoriesReply(period.label, "expense", await expensesByCategoryWithCards(tx, userId, period));
       case "category_total": {
-        if (!q.category) return fmt.categoriesReply(period.label, "expense", await totalsByCategory(tx, userId, period, "expense"));
+        if (!q.category) return fmt.categoriesReply(period.label, "expense", await expensesByCategoryWithCards(tx, userId, period));
         const kind = (await listCategories(tx, userId)).find((c) => c.slug === q.category)?.kind ?? "expense";
         const c = await totalForCategory(tx, userId, period, kind, q.category);
         const name = (await listCategories(tx, userId, kind)).find((x) => x.slug === q.category)?.name ?? q.category;
