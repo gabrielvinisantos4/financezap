@@ -229,7 +229,7 @@ describe("assinaturas com Asaas", () => {
     const day15 = new Date(`${addDays(today, 14)}T23:00:00Z`); // 20h do 15º dia em SP
     const day16 = new Date(`${addDays(today, 15)}T15:00:00Z`);
     expect((await getEntitlement(u.id, day15)).active).toBe(true);
-    expect((await getEntitlement(u.id, day16)).active).toBe(false);
+    expect(await getEntitlement(u.id, day16)).toMatchObject({ active: false, reason: "trial_ended" });
     // não ganha outro teste
     expect(await cardTrialFirstCharge(u.id)).toBe(addDays(today, 15));
     // durante o teste, pagar com Pix agenda a cobrança para o fim do teste (CPF obrigatório)

@@ -5,7 +5,7 @@ import { env } from "../config/env";
 
 export type Entitlement =
   | { active: true; planSlug: string; planName: string; limits: PlanLimits; subscriptionId: string; status: string }
-  | { active: false; reason: "no_subscription" | "pending_payment" | "past_due" | "canceled" | "blocked" | "deleted" };
+  | { active: false; reason: "no_subscription" | "trial_ended" | "pending_payment" | "past_due" | "canceled" | "blocked" | "deleted" };
 
 /** Decide se o cliente pode usar o produto agora, considerando assinatura e tolerância. */
 export async function getEntitlement(userId: string, now: Date = new Date()): Promise<Entitlement> {
@@ -45,6 +45,8 @@ export async function getEntitlement(userId: string, now: Date = new Date()): Pr
     }
   }
   const latest = rows[0].s;
+  // Teste grátis acabou e nenhuma assinatura paga foi feita
+  if (latest.provider === "manual" && rows.every(({ s }) => s.provider === "manual" || s.currentPeriodEnd === null)) return { active: false, reason: "trial_ended" };
   if (latest.status === "pending") return { active: false, reason: "pending_payment" };
   if (latest.status === "past_due") return { active: false, reason: "past_due" };
   // Só tentativas que nunca foram liberadas (ex.: pagamento não concluído): ainda não assinou
@@ -83,6 +85,7 @@ export async function recordUsage(input: { userId: string | null; type: "ai_call
 
 export const INACTIVE_MESSAGES: Record<Exclude<Entitlement, { active: true }>["reason"], string> = {
   no_subscription: "Sua conta ainda não está ativa. Comece seu teste grátis de 15 dias (sem pagar nada agora) em: ",
+  trial_ended: "Seu teste grátis de 15 dias terminou. Para continuar usando o FinanceZap, escolha seu plano e pague pelo Pix ou cartão em: ",
   pending_payment: "Estamos aguardando a confirmação do seu pagamento. Assim que o pagamento for confirmado, seu acesso é liberado automaticamente. Acompanhe em: ",
   past_due: "Sua assinatura está com pagamento em atraso e o acesso foi pausado. Regularize em: ",
   canceled: "Sua assinatura foi encerrada. Para voltar a usar, reative em: ",

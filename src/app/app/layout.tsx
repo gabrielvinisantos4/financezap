@@ -32,6 +32,8 @@ export default async function AppLayout({ children }: { children: React.ReactNod
         <Notice>
           {ent.reason === "pending_payment"
             ? "Estamos aguardando a confirmação do pagamento. O WhatsApp é liberado assim que o pagamento for confirmado."
+            : ent.reason === "trial_ended"
+              ? "Seu teste grátis terminou e o assistente no WhatsApp está pausado. Assine para continuar — seus lançamentos continuam salvos."
             : ent.reason === "blocked"
               ? "Seu acesso está suspenso. Entre em contato com o suporte."
               : "Sua assinatura não está ativa, então o assistente no WhatsApp está pausado."}{" "}
