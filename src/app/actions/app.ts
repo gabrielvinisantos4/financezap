@@ -251,7 +251,7 @@ export async function checkoutAction(_: FormState, form: FormData): Promise<Form
   const user = await requireUser();
   if (!(await rateLimit(`checkout:${user.id}`, 6, 3600))) return { error: "Muitas tentativas de pagamento. Aguarde alguns minutos." };
   const result = await guard(async () => {
-    const input = checkoutSchema.parse({ planSlug: form.get("plan"), cycle: form.get("cycle"), method: form.get("method"), cpfCnpj: form.get("cpfCnpj") });
+    const input = checkoutSchema.parse({ planSlug: form.get("plan"), cycle: form.get("cycle"), method: form.get("method"), cpfCnpj: form.get("cpfCnpj") ?? "" });
     return startCheckout(user.id, input);
   });
   if (result && "error" in result) return result;
