@@ -12,7 +12,7 @@ function cpfMask(v: string) {
   return d.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
 }
 
-export function CheckoutForm({ plans, initial, trialUntil = null }: { plans: P[]; initial?: string; trialUntil?: string | null }) {
+export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil = null }: { plans: P[]; initial?: string; trialUntil?: string | null; pixTrialUntil?: string | null }) {
   const [plan, setPlan] = useState(plans.find((p) => p.slug === initial)?.slug ?? plans[Math.min(1, plans.length - 1)]?.slug);
   const [cycle, setCycle] = useState<"monthly" | "yearly">("monthly");
   const [method, setMethod] = useState<"credit_card" | "pix">("credit_card");
@@ -63,7 +63,12 @@ export function CheckoutForm({ plans, initial, trialUntil = null }: { plans: P[]
         <label className={`cursor-pointer rounded-[24px] bg-surface p-5 transition-shadow ${method === "pix" ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
           <input type="radio" name="method" value="pix" checked={method === "pix"} onChange={() => setMethod("pix")} className="sr-only" />
           <span className="block font-semibold">⚡ Pix</span>
-          <span className="mt-1 block text-sm text-ink-soft">Você paga pelo QR Code. A cada {cycle === "monthly" ? "mês" : "ano"} chega uma nova cobrança Pix no seu e-mail.{trialUntil ? " No Pix o pagamento é na hora, sem teste grátis." : ""}</span>
+          <span className="mt-1 block text-sm text-ink-soft">
+            {trialUntil
+              ? `Use grátis até ${pixTrialUntil ?? trialUntil}. Nada é cobrado agora: o primeiro Pix vence nesse dia e chega no seu e-mail. Se não pagar, o acesso pausa no dia seguinte.`
+              : `Você paga pelo QR Code. A cada ${cycle === "monthly" ? "mês" : "ano"} chega uma nova cobrança Pix no seu e-mail.`}
+          </span>
+          {trialUntil && <span className="mt-2 inline-block rounded-full bg-gain-soft px-2.5 py-0.5 text-xs font-semibold text-gain">Teste grátis</span>}
         </label>
       </fieldset>
 
@@ -77,9 +82,9 @@ export function CheckoutForm({ plans, initial, trialUntil = null }: { plans: P[]
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">
         <Submit className="btn btn-primary text-base" pendingText="Abrindo pagamento…">
-          {method === "pix" ? `Gerar Pix${selected ? ` · ${cycle === "monthly" ? selected.monthly : selected.yearly}` : ""}` : trialUntil ? "Cadastrar cartão e começar grátis" : `Pagar com cartão${selected ? ` · ${cycle === "monthly" ? selected.monthly : selected.yearly}` : ""}`}
+          {method === "pix" ? trialUntil ? "Começar teste grátis" : `Gerar Pix${selected ? ` · ${cycle === "monthly" ? selected.monthly : selected.yearly}` : ""}` : trialUntil ? "Cadastrar cartão e começar grátis" : `Pagar com cartão${selected ? ` · ${cycle === "monthly" ? selected.monthly : selected.yearly}` : ""}`}
         </Submit>
-        <p className="text-sm text-ink-soft">Você vai para a página segura do Asaas. Dados do cartão não passam pelo FinanceZap.</p>
+        <p className="text-sm text-ink-soft">{method === "pix" && trialUntil ? "O teste começa na hora, sem pagar nada agora." : "Você vai para a página segura do Asaas. Dados do cartão não passam pelo FinanceZap."}</p>
       </div>
     </ActionForm>
   );

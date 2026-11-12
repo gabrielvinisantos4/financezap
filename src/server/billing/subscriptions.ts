@@ -92,7 +92,7 @@ export async function cardTrialFirstCharge(userId: string, now = new Date()): Pr
 
 /** Libera o teste quando o Asaas confirma que o cartão foi cadastrado e a 1ª cobrança é futura. */
 async function startCardTrial(sub: Subscription, firstDueDate: string | null | undefined) {
-  if (sub.status !== "pending" || sub.paymentMethod !== "credit_card" || !firstDueDate) return;
+  if (sub.status !== "pending" || !sub.paymentMethod || !["credit_card", "pix"].includes(sub.paymentMethod) || !firstDueDate) return;
   if (firstDueDate <= todayIn("America/Sao_Paulo")) return;
   const periodEnd = new Date(`${addDays(firstDueDate, 1)}T03:00:00Z`);
   await db().update(subscriptions).set({ status: "active", currentPeriodEnd: periodEnd, graceUntil: null }).where(and(eq(subscriptions.id, sub.id), eq(subscriptions.status, "pending")));
@@ -100,7 +100,7 @@ async function startCardTrial(sub: Subscription, firstDueDate: string | null | u
     .update(subscriptions)
     .set({ status: "expired", currentPeriodEnd: new Date() })
     .where(and(eq(subscriptions.userId, sub.userId), eq(subscriptions.provider, "manual"), eq(subscriptions.status, "active")));
-  await opEvent("info", "billing.trial_started", "Teste grátis iniciado com cartão cadastrado", { firstDueDate }, sub.userId);
+  await opEvent("info", "billing.trial_started", sub.paymentMethod === "pix" ? "Teste grátis iniciado (Pix)" : "Teste grátis iniciado com cartão cadastrado", { firstDueDate }, sub.userId);
 }
 
 export async function startCheckout(userId: string, input: z.infer<typeof checkoutSchema>): Promise<CheckoutResult> {
@@ -160,11 +160,16 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
   const label = `${env().APP_NAME} ${plan.name} (${input.cycle === "monthly" ? "mensal" : "anual"})`;
   try {
     if (input.method === "pix") {
+      // Teste grátis no Pix: usa os dias de teste e o 1º Pix vence no último dia deles.
+      // Se não pagar, o acesso trava no dia seguinte (sem a tolerância de quem já pagou).
+      const trialUntil = await cardTrialFirstCharge(userId);
+      const today = todayIn(user.timezone);
+      const pixDue = trialUntil ? (addDays(trialUntil, -1) > today ? addDays(trialUntil, -1) : trialUntil) : null;
       const remote = await withSplit((split) =>
         asaas.createPixSubscription({
           customer: customerId,
           value: price / 100,
-          nextDueDate: todayIn(user.timezone),
+          nextDueDate: pixDue ?? today,
           cycle,
           description: label,
           externalReference: sub.id,
@@ -175,6 +180,10 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
       const list = await asaas.listSubscriptionPayments(remote.id).catch(() => ({ data: [] as AsaasPayment[] }));
       const first = list.data[0];
       if (first) await upsertPayment(userId, sub.id, first);
+      if (pixDue) {
+        await startCardTrial({ ...sub, providerSubscriptionId: remote.id }, pixDue);
+        return { redirectUrl: `${env().APP_URL}/app/assinatura?pagamento=teste`, subscriptionId: sub.id };
+      }
       return { redirectUrl: first?.invoiceUrl ?? null, subscriptionId: sub.id };
     }
 
@@ -328,6 +337,15 @@ async function findSubscriptionByProviderId(providerSubscriptionId: string, hint
   return linked;
 }
 
+export async function hasPaidPayment(subscriptionId: string): Promise<boolean> {
+  const rows = await db()
+    .select({ id: payments.id })
+    .from(payments)
+    .where(and(eq(payments.subscriptionId, subscriptionId), inArray(payments.status, ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"])))
+    .limit(1);
+  return rows.length > 0;
+}
+
 async function upsertPayment(userId: string, subscriptionId: string | null, p: AsaasPayment) {
   const paidAt = p.paymentDate ?? p.confirmedDate ?? null;
   await db()
@@ -390,9 +408,11 @@ async function applyAsaasEvent(ev: z.infer<typeof asaasEventSchema>) {
       await startCardTrial(sub, payment.dueDate);
     } else if (ev.event === "PAYMENT_OVERDUE") {
       if (sub.status === "active" || sub.status === "pending") {
+        // Nunca pagou (fim do teste grátis): trava na hora, sem tolerância
+        const everPaid = await hasPaidPayment(sub.id);
         await db()
           .update(subscriptions)
-          .set({ status: sub.status === "pending" ? "pending" : "past_due", graceUntil: sub.status === "active" ? new Date(Date.now() + graceMs) : null })
+          .set({ status: sub.status === "pending" ? "pending" : "past_due", graceUntil: sub.status === "active" && everPaid ? new Date(Date.now() + graceMs) : null })
           .where(eq(subscriptions.id, sub.id));
         await opEvent("warn", "billing.overdue", "Pagamento em atraso", undefined, sub.userId);
       }

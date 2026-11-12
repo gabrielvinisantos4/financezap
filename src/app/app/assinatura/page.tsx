@@ -5,6 +5,7 @@ import { payments } from "@/server/db/schema";
 import { cardTrialFirstCharge, currentSubscription, listActivePlans } from "@/server/billing/subscriptions";
 import { getEntitlement, monthlyUsage } from "@/server/billing/entitlements";
 import { formatBRL } from "@/server/finance/money";
+import { addDays, todayIn } from "@/server/finance/dates";
 import { integrations } from "@/server/config/env";
 import { Badge, Money, PageHeader, Panel } from "@/components/ui";
 import { CheckoutForm } from "@/components/checkout-form";
@@ -26,6 +27,7 @@ const RETURN_MSG: Record<string, [string, "gain" | "coin"]> = {
   processando: ["Recebemos seus dados no Asaas. Assim que o cartão for aprovado, o acesso é liberado automaticamente — costuma levar poucos segundos. Atualize esta página.", "gain"],
   cancelado: ["Pagamento cancelado. Nenhuma cobrança foi feita. Você pode escolher outro plano ou forma de pagamento abaixo.", "coin"],
   expirado: ["O link de pagamento expirou. Gere um novo abaixo.", "coin"],
+  teste: ["Teste grátis liberado! Pode usar à vontade. O primeiro Pix chega no seu e-mail no último dia do teste.", "gain"],
 };
 
 export default async function SubscriptionPage({ searchParams }: { searchParams: Promise<{ plano?: string; pagamento?: string }> }) {
@@ -44,10 +46,14 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
   const notice = pagamento ? RETURN_MSG[pagamento] : undefined;
   const PAID = ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"];
   // Teste grátis com cartão: assinatura no Asaas liberada, mas nenhuma cobrança paga ainda
-  const cardTrial = sub?.provider === "asaas" && sub.paymentMethod === "credit_card" && ["active", "canceled"].includes(sub.status) && !history.some((p) => PAID.includes(p.status));
+  const cardTrial = sub?.provider === "asaas" && (sub.paymentMethod === "credit_card" || sub.paymentMethod === "pix") && ["active", "canceled"].includes(sub.status) && !history.some((p) => PAID.includes(p.status));
+  const pixTrial = cardTrial && sub?.paymentMethod === "pix";
   const firstCharge = cardTrial ? history.find((p) => p.status === "PENDING")?.dueDate ?? null : null;
   const fmt = (iso: string) => iso.split("-").reverse().join("/");
-  const pendingInvoice = cardTrial ? undefined : history.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
+  // No teste com Pix o link de pagamento só aparece nos 3 últimos dias do teste
+  const pixPayFrom = firstCharge ? addDays(firstCharge, -3) : null;
+  const pendingInvoice =
+    cardTrial && !(pixTrial && pixPayFrom && todayIn(user.timezone) >= pixPayFrom) ? undefined : history.find((p) => p.status === "PENDING" || p.status === "OVERDUE");
 
   return (
     <>
@@ -62,7 +68,9 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
                 <p className="mt-1 text-sm text-ink-soft">
                   {sub.status === "canceled"
                     ? `Teste grátis cancelado: você usa até ${sub.currentPeriodEnd?.toLocaleDateString("pt-BR", { timeZone: user.timezone }) ?? "o fim do teste"} e não será cobrado.`
-                    : `Teste grátis em andamento. A primeira cobrança no cartão é em ${firstCharge ? fmt(firstCharge) : sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd.getTime() - 86400_000).toLocaleDateString("pt-BR", { timeZone: user.timezone }) : "breve"}. Cancele antes disso e não paga nada.`}
+                    : pixTrial
+                      ? `Teste grátis em andamento até ${firstCharge ? fmt(firstCharge) : "o fim do teste"}. O primeiro Pix vence nesse dia — se não for pago, o acesso pausa no dia seguinte.`
+                      : `Teste grátis em andamento. A primeira cobrança no cartão é em ${firstCharge ? fmt(firstCharge) : sub.currentPeriodEnd ? new Date(sub.currentPeriodEnd.getTime() - 86400_000).toLocaleDateString("pt-BR", { timeZone: user.timezone }) : "breve"}. Cancele antes disso e não paga nada.`}
                 </p>
               ) : (
                 sub.currentPeriodEnd && <p className="mt-1 text-sm text-ink-soft">{sub.status === "canceled" ? "Acesso até" : isTrial ? "Teste grátis até" : "Período pago até"} {sub.currentPeriodEnd.toLocaleDateString("pt-BR", { timeZone: user.timezone })}</p>
@@ -99,6 +107,7 @@ export default async function SubscriptionPage({ searchParams }: { searchParams:
                 <CheckoutForm
                   initial={plano}
                   trialUntil={trialUntil ? fmt(trialUntil) : null}
+                  pixTrialUntil={trialUntil ? fmt(addDays(trialUntil, -1) > todayIn(user.timezone) ? addDays(trialUntil, -1) : trialUntil) : null}
                   plans={plans.map((p) => {
                     const saving = p.priceMonthlyCents * 12 - p.priceYearlyCents;
                     return {

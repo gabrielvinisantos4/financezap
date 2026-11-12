@@ -25,7 +25,7 @@ export default function Terms() {
       <h2>Assinatura e pagamento</h2>
       <ul>
         <li>O acesso depende de assinatura ativa. Valores, limites de uso e recursos de cada plano estão descritos na página de planos.</li>
-        <li>Teste grátis: na primeira assinatura com cartão de crédito, você usa o serviço sem custo durante o período de teste informado na contratação. O cartão é validado ao cadastrar, e a primeira cobrança acontece somente no fim do teste. Se cancelar antes, nada é cobrado. O teste é concedido uma única vez por cliente.</li>
+        <li>Teste grátis: na primeira assinatura, você usa o serviço sem custo durante o período de teste informado na contratação. No cartão de crédito, o cartão é validado ao cadastrar e a primeira cobrança acontece somente no fim do teste. No Pix, nada é cobrado ao assinar: a primeira cobrança vence no último dia do teste e, se não for paga, o acesso é pausado no dia seguinte até o pagamento. Se cancelar antes, nada é cobrado. O teste é concedido uma única vez por cliente.</li>
         <li>Depois do teste (ou de imediato, no Pix), a cobrança é recorrente, mensal ou anual conforme o plano escolhido, até você cancelar.</li>
         <li>O acesso pago é liberado somente após a confirmação do pagamento pelo gateway (Asaas).</li>
         <li>Em caso de atraso, há uma tolerância de 5 dias antes da suspensão do assistente.</li>

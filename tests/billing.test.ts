@@ -7,6 +7,13 @@ import { getEntitlement } from "@/server/billing/entitlements";
 import { setAsaasFetcher } from "@/server/billing/asaas";
 import { makeUser, resetDb } from "./helpers";
 import { addDays, todayIn } from "@/server/finance/dates";
+import { resetEnvCache } from "@/server/config/env";
+
+/** Desliga o teste grátis (para os cenários de cobrança imediata). */
+function noTrial() {
+  process.env.CARD_TRIAL_DAYS = "0";
+  resetEnvCache();
+}
 
 const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
 
@@ -47,13 +54,18 @@ beforeEach(async () => {
   await resetDb();
   await db().insert(plans).values({ slug: "basico", name: "Básico", priceMonthlyCents: 1990, priceYearlyCents: 19900, active: true, limits: { monthlyMessages: 300, monthlyAiCalls: 300, maxAccounts: 3, customCategories: false, advancedReports: false } });
 });
-afterEach(() => setAsaasFetcher(null));
+afterEach(() => {
+  setAsaasFetcher(null);
+  delete process.env.CARD_TRIAL_DAYS;
+  resetEnvCache();
+});
 afterAll(closeDb);
 
 describe("assinaturas com Asaas", () => {
   it("checkout cria cliente e assinatura e devolve o link da fatura; acesso só após confirmação do gateway", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
+    noTrial();
     const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     expect(r.redirectUrl).toContain("asaas.com/i/");
     expect(asaas.calls).toContain("POST /customers");
@@ -77,6 +89,7 @@ describe("assinaturas com Asaas", () => {
   it("rejeita webhook sem o token configurado e ignora evento repetido", async () => {
     fakeAsaas();
     const u = await makeUser();
+    noTrial();
     await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     expect((await handleAsaasWebhook(event("evt_x", "PAYMENT_RECEIVED", { id: "pay_1", customer: "c", status: "RECEIVED", value: 1 }), "errado")).status).toBe(401);
     const body = event("evt_same", "PAYMENT_CREATED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "PENDING", value: 19.9 });
@@ -88,6 +101,7 @@ describe("assinaturas com Asaas", () => {
   it("inadimplência: tolerância configurável e depois bloqueio; pagamento reativa", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
+    noTrial();
     await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
@@ -109,6 +123,7 @@ describe("assinaturas com Asaas", () => {
   it("cancelamento mantém acesso até o fim do período pago", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
+    noTrial();
     await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
@@ -121,6 +136,7 @@ describe("assinaturas com Asaas", () => {
   it("estorno/chargeback suspende o acesso", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
+    noTrial();
     await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
     asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: "2026-10-24" });
     await handleAsaasWebhook(event("e1", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
@@ -201,5 +217,29 @@ describe("assinaturas com Asaas", () => {
     await grantManualSubscription(u.id, "basico", 10);
     const end = todayIn("America/Sao_Paulo", new Date(Date.now() + 10 * 86400_000));
     expect(await cardTrialFirstCharge(u.id)).toBe(end);
+  });
+  it("teste grátis no Pix: libera na hora sem cobrar, 1º Pix vence no 15º dia e trava no 16º se não pagar", async () => {
+    const asaas = fakeAsaas();
+    const u = await makeUser();
+    const today = todayIn("America/Sao_Paulo");
+    const lastDay = addDays(today, 14);
+    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    expect(r.redirectUrl).toContain("/app/assinatura?pagamento=teste");
+    const created = asaas.calls.find((c) => c === "POST /subscriptions");
+    expect(created).toBeTruthy();
+    expect(await getEntitlement(u.id)).toMatchObject({ active: true, planSlug: "basico" });
+    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
+    expect(sub.currentPeriodEnd?.toISOString()).toBe(`${addDays(lastDay, 1)}T03:00:00.000Z`);
+    // dia 16 (sem pagar): bloqueado, sem tolerância
+    const day16 = new Date(`${addDays(lastDay, 1)}T15:00:00Z`);
+    expect((await getEntitlement(u.id, day16)).active).toBe(false);
+    // atraso do 1º Pix também não dá tolerância
+    asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "OVERDUE" });
+    await handleAsaasWebhook(event("e_ov", "PAYMENT_OVERDUE", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "OVERDUE", value: 19.9 }), TOKEN);
+    expect((await getEntitlement(u.id, day16)).active).toBe(false);
+    // pagou: volta
+    asaas.payments.set("pay_1", { ...asaas.payments.get("pay_1")!, status: "RECEIVED", paymentDate: addDays(lastDay, 1) });
+    await handleAsaasWebhook(event("e_pd", "PAYMENT_RECEIVED", { id: "pay_1", customer: "cus_TEST", subscription: "sub_TEST1", status: "RECEIVED", value: 19.9 }), TOKEN);
+    expect((await getEntitlement(u.id, day16)).active).toBe(true);
   });
 });

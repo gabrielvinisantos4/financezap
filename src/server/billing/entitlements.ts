@@ -1,6 +1,6 @@
 import { and, desc, eq, gte, inArray, sql } from "drizzle-orm";
 import { db } from "../db/client";
-import { plans, subscriptions, usageEvents, users, type PlanLimits } from "../db/schema";
+import { payments, plans, subscriptions, usageEvents, users, type PlanLimits } from "../db/schema";
 import { env } from "../config/env";
 
 export type Entitlement =
@@ -28,7 +28,16 @@ export async function getEntitlement(userId: string, now: Date = new Date()): Pr
     const inGrace = s.graceUntil !== null && s.graceUntil > now;
     // Assinatura ativa ganha a tolerância configurada após o fim do período,
     // cobrindo o intervalo entre o vencimento e a chegada do webhook de atraso.
-    const periodOk = s.currentPeriodEnd === null || s.currentPeriodEnd.getTime() + graceMs > now.getTime() || inGrace;
+    let periodOk = s.currentPeriodEnd === null || s.currentPeriodEnd.getTime() + graceMs > now.getTime() || inGrace;
+    // Teste grátis no Pix que nunca foi pago: trava logo após o fim do teste, sem tolerância
+    if (periodOk && !inGrace && s.status === "active" && s.provider === "asaas" && s.paymentMethod === "pix" && s.currentPeriodEnd && s.currentPeriodEnd <= now) {
+      const [paid] = await db()
+        .select({ id: payments.id })
+        .from(payments)
+        .where(and(eq(payments.subscriptionId, s.id), inArray(payments.status, ["RECEIVED", "CONFIRMED", "RECEIVED_IN_CASH"])))
+        .limit(1);
+      if (!paid) periodOk = false;
+    }
     if ((s.status === "active" && periodOk) || (s.status === "past_due" && inGrace) || (s.status === "canceled" && s.currentPeriodEnd && s.currentPeriodEnd > now)) {
       return { active: true, planSlug: p.slug, planName: p.name, limits: p.limits, subscriptionId: s.id, status: s.status };
     }
