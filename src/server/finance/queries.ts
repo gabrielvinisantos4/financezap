@@ -111,13 +111,14 @@ export type TxWithCategory = Transaction & { categoryName: string | null; catego
 export async function listTransactions(
   tx: Tx,
   userId: string,
-  opts: { limit?: number; offset?: number; period?: Period; kind?: Transaction["kind"]; status?: "paid" | "pending"; categoryId?: string; accountId?: string; search?: string } = {},
+  opts: { limit?: number; offset?: number; period?: Period; kind?: Transaction["kind"]; status?: "paid" | "pending"; categoryId?: string; accountId?: string; search?: string; paymentMethod?: string } = {},
 ): Promise<TxWithCategory[]> {
   const conds = [eq(transactions.userId, userId), alive];
   if (opts.period) conds.push(gte(transactions.occurredOn, opts.period.from), lte(transactions.occurredOn, opts.period.to));
   if (opts.kind) conds.push(eq(transactions.kind, opts.kind));
   if (opts.status) conds.push(eq(transactions.status, opts.status));
   if (opts.categoryId) conds.push(eq(transactions.categoryId, opts.categoryId));
+  if (opts.paymentMethod) conds.push(opts.paymentMethod === "nenhuma" ? sql`${transactions.paymentMethod} is null` : eq(transactions.paymentMethod, opts.paymentMethod));
   if (opts.accountId) conds.push(sql`(${transactions.accountId} = ${opts.accountId} or ${transactions.toAccountId} = ${opts.accountId})`);
   if (opts.search) {
     const like = `%${opts.search.replace(/[%_\\]/g, (m) => `\\${m}`)}%`;
@@ -277,4 +278,18 @@ export async function dailyExpenses(tx: Tx, userId: string, p: Period): Promise<
     .groupBy(transactions.occurredOn)
     .orderBy(transactions.occurredOn);
   return rows.map((r) => ({ date: r.date, cents: Number(r.cents) }));
+}
+
+/** Total pago por forma de pagamento no período (cartão, Pix, dinheiro...). Sem forma informada = null. */
+export async function totalsByPaymentMethod(tx: Tx, userId: string, period: Period, kind: "income" | "expense") {
+  return tx
+    .select({
+      method: transactions.paymentMethod,
+      totalCents: sql<number>`coalesce(sum(${transactions.amountCents}), 0)::int`,
+      count: sql<number>`count(*)::int`,
+    })
+    .from(transactions)
+    .where(and(eq(transactions.userId, userId), alive, eq(transactions.kind, kind), eq(transactions.status, "paid"), gte(transactions.occurredOn, period.from), lte(transactions.occurredOn, period.to)))
+    .groupBy(transactions.paymentMethod)
+    .orderBy(sql`3 desc`);
 }

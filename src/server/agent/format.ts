@@ -1,3 +1,4 @@
+import { isPaymentMethod, paymentMethodLabel, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "../finance/payment-methods";
 import type { Transaction } from "../db/schema";
 import { formatBRL } from "../finance/money";
 import { formatBR, monthLabel } from "../finance/dates";
@@ -32,6 +33,7 @@ export function recordedReply(rows: Transaction[], category: { name: string; ico
   if (category) lines.push(`${category.icon} ${category.name}`);
   if (opts.merchant) lines.push(`📍 ${opts.merchant}`);
   if (opts.counterparty) lines.push(`👤 ${opts.counterparty}`);
+  if (isPaymentMethod(first.paymentMethod)) lines.push(`${PAYMENT_METHOD_ICONS[first.paymentMethod]} ${PAYMENT_METHOD_LABELS[first.paymentMethod]}`);
   if (rows.length > 1) {
     lines.push(`💰 ${formatBRL(total)} em ${rows.length}x de ${formatBRL(rows[rows.length - 1].amountCents)}`);
     lines.push(`📅 1ª parcela: ${formatBR(first.occurredOn)}`);
@@ -48,7 +50,8 @@ export function multiRecordedReply(items: { rows: Transaction[]; category: { nam
   for (const it of items) {
     const t = it.rows[0];
     const sign = t.kind === "income" ? "+" : "−";
-    lines.push(`${it.category?.icon ?? "•"} ${t.description} · ${sign}${formatBRL(it.rows.reduce((s, r) => s + r.amountCents, 0))}`);
+    const pm = paymentMethodLabel(t.paymentMethod);
+    lines.push(`${it.category?.icon ?? "•"} ${t.description} · ${sign}${formatBRL(it.rows.reduce((s, r) => s + r.amountCents, 0))}${pm ? ` · ${pm}` : ""}`);
   }
   lines.push("", `📅 Data: ${formatBR(items[0].rows[0].occurredOn)}`);
   return { text: lines.join("\n") };
@@ -186,3 +189,15 @@ export const HELP_TEXT = [
   "",
   "No painel web você vê gráficos, contas, cartões e relatórios.",
 ].join("\n");
+
+export function paymentMethodsReply(label: string, rows: { method: string | null; totalCents: number; count: number }[]): Reply {
+  if (!rows.length) return { text: `Nada gasto ${label}.` };
+  const total = rows.reduce((s, r) => s + r.totalCents, 0);
+  const lines = [`💳 Gastos por forma de pagamento ${label}`, ""];
+  for (const r of rows) {
+    const name = isPaymentMethod(r.method) ? `${PAYMENT_METHOD_ICONS[r.method]} ${PAYMENT_METHOD_LABELS[r.method]}` : "❔ Sem forma informada";
+    lines.push(`${name}: ${formatBRL(r.totalCents)} (${Math.round((r.totalCents / Math.max(total, 1)) * 100)}%)`);
+  }
+  lines.push("", `Total: ${formatBRL(total)}`);
+  return { text: lines.join("\n") };
+}

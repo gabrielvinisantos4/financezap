@@ -1,5 +1,7 @@
+import Link from "next/link";
 import { withUser } from "@/server/db/client";
-import { availability, dailyExpenses, listTransactions, payables, periodSummary, totalsByCategory } from "@/server/finance/queries";
+import { availability, dailyExpenses, listTransactions, payables, periodSummary, totalsByCategory, totalsByPaymentMethod } from "@/server/finance/queries";
+import { isPaymentMethod, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
 import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
 import { addDays, addMonths, daysInMonth, endOfMonth, formatBR, monthLabel, monthName, resolvePeriod, startOfMonth } from "@/server/finance/dates";
@@ -30,6 +32,7 @@ export default async function Overview() {
     avail: await availability(tx, user.id, today),
     summary: await periodSummary(tx, user.id, month),
     cats: await totalsByCategory(tx, user.id, month, "expense"),
+    methods: await totalsByPaymentMethod(tx, user.id, month, "expense"),
     prevCats: await totalsByCategory(tx, user.id, { from: prevStart, to: prevSameDay, label: "" }, "expense"),
     dailyNow: await dailyExpenses(tx, user.id, { from: month.from, to: today, label: "" }),
     dailyPrev: await dailyExpenses(tx, user.id, { from: prevStart, to: prevEnd, label: "" }),
@@ -213,6 +216,32 @@ export default async function Overview() {
               </ul>
             )}
           </Panel>
+          {data.methods.some((m) => m.method) && (
+            <Panel title="Como você pagou" action={<PanelLink href={`/app/lancamentos?mes=${month.from.slice(0, 7)}`}>Ver</PanelLink>}>
+              <ul className="grid gap-2.5">
+                {(() => {
+                  const total = data.methods.reduce((s, m) => s + m.totalCents, 0) || 1;
+                  return data.methods.map((m) => {
+                    const pct = Math.round((m.totalCents / total) * 100);
+                    const known = isPaymentMethod(m.method);
+                    return (
+                      <li key={m.method ?? "none"}>
+                        <Link href={`/app/lancamentos?mes=${month.from.slice(0, 7)}&tipo=expense&forma=${known ? m.method : "nenhuma"}`} className="grid gap-1.5 rounded-[14px] px-1 py-1 hover:bg-paper">
+                          <span className="flex items-center justify-between gap-3 text-sm">
+                            <span className="font-medium">{known ? `${PAYMENT_METHOD_ICONS[m.method as keyof typeof PAYMENT_METHOD_ICONS]} ${PAYMENT_METHOD_LABELS[m.method as keyof typeof PAYMENT_METHOD_LABELS]}` : "❔ Sem forma informada"}</span>
+                            <span className="money font-semibold">{formatBRL(m.totalCents)}</span>
+                          </span>
+                          <span className="h-1.5 overflow-hidden rounded-full bg-line">
+                            <span className="block h-full rounded-full bg-gain" style={{ width: `${pct}%` }} />
+                          </span>
+                        </Link>
+                      </li>
+                    );
+                  });
+                })()}
+              </ul>
+            </Panel>
+          )}
           <Panel title="Vencendo nos próximos 15 dias">
             {data.due.length === 0 ? (
               <p className="text-sm text-ink-soft">Nenhuma conta a pagar no período.</p>

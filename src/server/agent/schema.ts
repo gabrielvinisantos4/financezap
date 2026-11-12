@@ -21,6 +21,7 @@ export const QUERY_TYPES = [
   "payables", // contas a pagar / vencendo
   "recurring", // despesas recorrentes
   "evolution", // evolução nos últimos meses
+  "by_payment_method", // gastos por forma de pagamento (cartão, Pix, dinheiro...)
 ] as const;
 
 export const PERIOD_TYPES = ["today", "yesterday", "this_week", "last_week", "this_month", "last_month", "month", "this_year", "last_n_days", "custom"] as const;
@@ -57,6 +58,8 @@ export const querySchema = z.object({
   category: z.string().max(48).nullable(),
   search: z.string().max(80).nullable(),
   limit: z.number().int().min(1).max(30).nullable(),
+  /** "quanto gastei no cartão/no Pix" */
+  payment_method: z.enum(PAYMENT_METHODS).nullable().optional(),
 });
 
 export const targetSchema = z.object({
@@ -164,6 +167,7 @@ export const interpretationJsonSchema = obj({
       category: nullable(str),
       search: nullable({ ...str, description: "Nome de estabelecimento, cliente ou termo citado" }),
       limit: nullable(int),
+      payment_method: nullable({ type: "string", enum: [...PAYMENT_METHODS], description: "Forma de pagamento citada na pergunta (\"no cartão\", \"no Pix\")" }),
     }),
   ),
   target: nullable(

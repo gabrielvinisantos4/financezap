@@ -18,7 +18,18 @@ export type EntryDefaults = {
   occurredOn: string;
   pending?: boolean;
   notes?: string | null;
+  paymentMethod?: string | null;
 };
+
+const METHODS = [
+  ["", "Não informar"],
+  ["pix", "Pix"],
+  ["credito", "Cartão de crédito"],
+  ["debito", "Cartão de débito"],
+  ["dinheiro", "Dinheiro"],
+  ["boleto", "Boleto"],
+  ["transferencia", "Transferência"],
+] as const;
 
 export function EntryForm({ categories, accounts, defaults }: { categories: Opt[]; accounts: Opt[]; defaults: EntryDefaults }) {
   const [kind, setKind] = useState<"income" | "expense">(defaults.kind ?? "expense");
@@ -85,6 +96,16 @@ export function EntryForm({ categories, accounts, defaults }: { categories: Opt[
           </select>
         </label>
       </div>
+      <label className="field">
+        <span>Forma de pagamento</span>
+        <select className="input" name="paymentMethod" defaultValue={defaults.paymentMethod ?? ""}>
+          {METHODS.map(([v, l]) => (
+            <option key={v} value={v}>
+              {l}
+            </option>
+          ))}
+        </select>
+      </label>
       {!editing && (
         <label className="field">
           <span>Parcelas</span>

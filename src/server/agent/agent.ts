@@ -27,8 +27,10 @@ import {
   totalForCategory,
   totalsByCategory,
   totalsByParty,
+  totalsByPaymentMethod,
 } from "../finance/queries";
-import { addDays, addMonths, formatBR, isISODate, resolvePeriod, todayIn, type ISODate, type PeriodSpec } from "../finance/dates";
+import { isPaymentMethod, paymentMethodLabel, PAYMENT_METHOD_ICONS } from "../finance/payment-methods";
+import { addDays, addMonths, formatBR, isISODate, resolvePeriod, todayIn, type ISODate, type Period, type PeriodSpec } from "../finance/dates";
 import { formatBRL, reaisToCents } from "../finance/money";
 import { guessCategorySlug } from "../finance/categories";
 import { FinanceError } from "../finance/errors";
@@ -459,6 +461,24 @@ function resolveCategorySlug(entry: Entry, cats: Category[]): string {
   return guessCategorySlug(`${entry.description} ${entry.merchant ?? ""} ${entry.counterparty ?? ""}`, entry.kind);
 }
 
+const METHOD_DESCRIPTION: Record<string, string> = {
+  credito: "Compra no cartão",
+  debito: "Compra no débito",
+  pix: "Pagamento no Pix",
+  dinheiro: "Pagamento em dinheiro",
+  boleto: "Pagamento de boleto",
+  transferencia: "Transferência",
+};
+
+/** Sem descrição útil ("1.000 no cartão"), usa a forma de pagamento para o lançamento não virar só "Despesa". */
+function describeEntry(e: Entry): string {
+  const d = e.description?.trim() ?? "";
+  const generic = !d || /^(despesa|receita|gasto|compra|pagamento|outros?)$/i.test(d);
+  if (generic && e.kind === "expense" && e.payment_method) return METHOD_DESCRIPTION[e.payment_method] ?? "Despesa";
+  if (generic && e.kind === "income" && e.payment_method === "pix") return "Recebimento no Pix";
+  return d || (e.kind === "expense" ? "Despesa" : "Receita");
+}
+
 async function recordEntries(userId: string, entries: Entry[], messageId: string, today: ISODate, now: Date, confidence: number): Promise<Reply> {
   // Faltou valor? Se for "paguei o aluguel" e há conta fixa pendente com esse nome, usa o valor dela.
   const missing = entries.find((e) => e.amount === null);
@@ -490,7 +510,7 @@ async function recordEntries(userId: string, entries: Entry[], messageId: string
       return {
         kind: e.kind,
         amountCents: reaisToCents(e.amount!),
-        description: e.description?.trim() || (e.kind === "expense" ? "Despesa" : "Receita"),
+        description: describeEntry(e),
         merchant: e.merchant,
         counterparty: e.counterparty,
         categorySlug: resolveCategorySlug(e, cats),
@@ -575,6 +595,17 @@ function toPeriodSpec(q: Query): PeriodSpec {
   }
 }
 
+async function methodTotalReply(tx: Tx, userId: string, period: Period, kind: "income" | "expense", method: string): Promise<Reply> {
+  const rows = await listTransactions(tx, userId, { period, kind, status: "paid", paymentMethod: method, limit: 500 });
+  const total = rows.reduce((s, r) => s + r.amountCents, 0);
+  const via: Record<string, string> = { credito: "no cartão de crédito", debito: "no débito", pix: "no Pix", dinheiro: "em dinheiro", boleto: "em boleto", transferencia: "por transferência" };
+  const how = via[method] ?? `com ${paymentMethodLabel(method) ?? method}`;
+  const icon = isPaymentMethod(method) ? PAYMENT_METHOD_ICONS[method] : "💳";
+  if (!rows.length) return { text: `Não encontrei ${kind === "expense" ? "gastos" : "entradas"} ${how} ${period.label}.` };
+  const verb = kind === "expense" ? "Você gastou" : "Entraram";
+  return { text: `${icon} ${verb} ${formatBRL(total)} ${how} ${period.label}.\n${rows.length} lançamento${rows.length === 1 ? "" : "s"}.` };
+}
+
 async function runQuery(userId: string, q: Query, caps: AgentCapabilities, today: ISODate): Promise<Reply> {
   let period;
   try {
@@ -586,12 +617,16 @@ async function runQuery(userId: string, q: Query, caps: AgentCapabilities, today
     switch (q.type) {
       case "summary":
         return fmt.summaryReply(period.label, await periodSummary(tx, userId, period));
+      case "by_payment_method":
+        return fmt.paymentMethodsReply(period.label, await totalsByPaymentMethod(tx, userId, period, "expense"));
       case "expenses_total": {
+        if (q.payment_method) return methodTotalReply(tx, userId, period, "expense", q.payment_method);
         const s = await periodSummary(tx, userId, period);
         const count = (await listTransactions(tx, userId, { period, kind: "expense", status: "paid", limit: 500 })).length;
         return fmt.totalReply("expense", period.label, s.netExpenseCents, count);
       }
       case "income_total": {
+        if (q.payment_method) return methodTotalReply(tx, userId, period, "income", q.payment_method);
         const s = await periodSummary(tx, userId, period);
         const count = (await listTransactions(tx, userId, { period, kind: "income", status: "paid", limit: 500 })).length;
         return fmt.totalReply("income", period.label, s.incomeCents, count);
@@ -616,7 +651,7 @@ async function runQuery(userId: string, q: Query, caps: AgentCapabilities, today
         return fmt.largestReply("income", period.label, await largestTransaction(tx, userId, period, "income"));
       case "recent": {
         const kind = q.category === "expense" || q.category === "income" ? q.category : undefined;
-        return fmt.recentReply(await listTransactions(tx, userId, { limit: q.limit ?? 10, kind }));
+        return fmt.recentReply(await listTransactions(tx, userId, { limit: q.limit ?? 10, kind, paymentMethod: q.payment_method ?? undefined }));
       }
       case "balance":
         return fmt.availabilityReply(await availability(tx, userId, today));

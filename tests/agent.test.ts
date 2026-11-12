@@ -424,3 +424,28 @@ describe("contas fixas pelo WhatsApp", () => {
     expect(list[0]).toMatchObject({ status: "pending", dueOn: "2026-11-05", amountCents: 12000 });
   });
 });
+
+describe("forma de pagamento", () => {
+  it("\"1.000 no cartão, 50 no pix\" vira dois lançamentos, cada um com a sua forma, e a resposta mostra", async () => {
+    const u = await makeUser();
+    const r = await send(u.id, "1.000 no cartão, 50 no pix");
+    expect(r.reply.text).toContain("2 lançamentos registrados");
+    expect(r.reply.text).toContain("Compra no cartão · −R$ 1.000,00 · Cartão de crédito");
+    expect(r.reply.text).toContain("Pagamento no Pix · −R$ 50,00 · Pix");
+    const list = await withUser(u.id, (tx) => listTransactions(tx, u.id, { limit: 10 }));
+    expect(list.map((t) => t.paymentMethod).sort()).toEqual(["credito", "pix"]);
+  });
+
+  it("gasto com verbo e forma: guarda e mostra a forma; consulta por forma soma certo", async () => {
+    const u = await makeUser();
+    const r = await send(u.id, "Gastei 80 no mercado no débito");
+    expect(r.reply.text).toContain("💳 Cartão de débito");
+    await send(u.id, "paguei 30 em dinheiro na feira");
+    await send(u.id, "gastei 1000 no cartão e 50 no pix");
+    const q = await send(u.id, "quanto gastei no pix este mês?");
+    expect(q.reply.text).toContain("Você gastou R$ 50,00 no Pix");
+    const all = await send(u.id, "quanto gastei por forma de pagamento?");
+    expect(all.reply.text).toContain("Cartão de crédito: R$ 1.000,00");
+    expect(all.reply.text).toContain("Dinheiro: R$ 30,00");
+  });
+});

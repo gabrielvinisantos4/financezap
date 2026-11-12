@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { isPaymentMethod } from "@/server/finance/payment-methods";
 import { redirect } from "next/navigation";
 import { z } from "zod";
 import { eq } from "drizzle-orm";
@@ -74,6 +75,10 @@ export async function saveEntryAction(_: FormState, form: FormData): Promise<For
       occurredOn,
       status: (form.get("pending") === "on" ? "pending" : "paid") as "paid" | "pending",
       notes: opt(form.get("notes")),
+      paymentMethod: (() => {
+        const v = opt(form.get("paymentMethod"));
+        return v && isPaymentMethod(v) ? v : null;
+      })(),
     };
     await withUser(user.id, async (tx) => {
       if (id) {

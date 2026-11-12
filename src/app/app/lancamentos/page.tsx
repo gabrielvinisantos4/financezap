@@ -3,6 +3,7 @@ import { withUser } from "@/server/db/client";
 import { listTransactions } from "@/server/finance/queries";
 import { getTransaction, listAccounts, listCategories } from "@/server/finance/engine";
 import { addMonths, formatBR, monthLabel } from "@/server/finance/dates";
+import { isPaymentMethod, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
 import { appContext, monthFromParam } from "@/server/app-context";
 import { Badge, Empty, Money, PageHeader, Panel } from "@/components/ui";
 import { EntryForm } from "@/components/entry-form";
@@ -13,7 +14,7 @@ export const metadata = { title: "Lançamentos" };
 
 const KIND = { income: "Receita", expense: "Despesa", transfer: "Transferência", card_payment: "Pagamento de fatura", refund: "Estorno" } as const;
 
-type SP = { mes?: string; tipo?: string; categoria?: string; conta?: string; busca?: string; editar?: string; pagina?: string };
+type SP = { mes?: string; tipo?: string; categoria?: string; conta?: string; forma?: string; busca?: string; editar?: string; pagina?: string };
 
 export default async function Entries({ searchParams }: { searchParams: Promise<SP> }) {
   const sp = await searchParams;
@@ -30,6 +31,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
       categoryId: uuid(sp.categoria),
       accountId: uuid(sp.conta),
       search: sp.busca?.slice(0, 60) || undefined,
+      paymentMethod: sp.forma && (isPaymentMethod(sp.forma) || sp.forma === "nenhuma") ? sp.forma : undefined,
       limit: 51,
       offset: (page - 1) * 50,
     });
@@ -57,7 +59,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
         </div>
       </PageHeader>
 
-      <form className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-5" role="search">
+      <form className="mb-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-6" role="search">
         <input type="hidden" name="mes" value={period.key} />
         <input className="input lg:col-span-2" name="busca" placeholder="Buscar por descrição, local ou cliente" defaultValue={sp.busca} aria-label="Buscar" />
         <select className="input" name="tipo" defaultValue={sp.tipo ?? ""} aria-label="Tipo">
@@ -71,6 +73,13 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
           {data.categories.map((c) => (
             <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
           ))}
+        </select>
+        <select className="input" name="forma" defaultValue={sp.forma ?? ""} aria-label="Forma de pagamento">
+          <option value="">Todas as formas</option>
+          {Object.entries(PAYMENT_METHOD_LABELS).map(([k, v]) => (
+            <option key={k} value={k}>{v}</option>
+          ))}
+          <option value="nenhuma">Sem forma informada</option>
         </select>
         <div className="flex gap-2">
           <select className="input" name="conta" defaultValue={sp.conta ?? ""} aria-label="Conta">
@@ -102,6 +111,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
                   occurredOn: data.editing.status === "pending" ? (data.editing.dueOn ?? data.editing.occurredOn) : data.editing.occurredOn,
                   pending: data.editing.status === "pending",
                   notes: data.editing.notes,
+                  paymentMethod: data.editing.paymentMethod,
                 }}
               />
               {data.editing.kind === "expense" && (
@@ -158,6 +168,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
                         </p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {t.kind !== "income" && t.kind !== "expense" && <Badge>{KIND[t.kind]}</Badge>}
+                          {isPaymentMethod(t.paymentMethod) && <Badge>{PAYMENT_METHOD_ICONS[t.paymentMethod]} {PAYMENT_METHOD_LABELS[t.paymentMethod]}</Badge>}
                           {t.status === "pending" && <Badge tone="coin">{t.kind === "income" ? "A receber" : "A pagar"} {t.dueOn ? formatBR(t.dueOn).slice(0, 5) : ""}</Badge>}
                         </div>
                       </td>

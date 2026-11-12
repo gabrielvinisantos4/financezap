@@ -57,12 +57,13 @@ function extractDate(n: string, today: ISODate): ISODate | null {
   return null;
 }
 
-function extractPaymentMethod(n: string): Entry["payment_method"] {
+export function extractPaymentMethod(n: string): Entry["payment_method"] {
   if (/\bpix\b/.test(n)) return "pix";
-  if (/\b(credito|cartao de credito|no cartao)\b/.test(n)) return "credito";
   if (/\bdebito\b/.test(n)) return "debito";
-  if (/\b(dinheiro|especie)\b/.test(n)) return "dinheiro";
+  if (/\b(credito|cartao|cartoes|parcelad[oa])\b/.test(n)) return "credito";
+  if (/\b(dinheiro|especie|em maos|cash)\b/.test(n)) return "dinheiro";
   if (/\bboleto\b/.test(n)) return "boleto";
+  if (/\b(transferencia|ted|doc)\b/.test(n)) return "transferencia";
   return null;
 }
 
@@ -90,10 +91,52 @@ function extractPlace(original: string, preps: string[]): string | null {
 const EXPENSE_VERBS = /\b(gastei|paguei|comprei|torrei|abasteci|gasto de|despesa de|saiu|pago|pagamos|gastamos)\b/;
 const INCOME_VERBS = /\b(recebi|entrou|ganhei|vendi|caiu|faturei|recebemos|receita de)\b/;
 
+/** "1.000 no cartão, 50 no pix" → um lançamento por valor, cada um com a sua forma de pagamento. */
+function parseByPaymentMethod(original: string, n: string, today: ISODate): Interpretation | null {
+  if (INCOME_VERBS.test(n)) return null;
+  const parts = original.split(/\s*(?:,|;|\be\b|\+)\s*(?=(?:r\$\s*)?\d)/i).filter((p) => p.trim());
+  const entries: Entry[] = [];
+  for (const part of parts) {
+    const pn = normalize(part);
+    const amount = extractAmount(part);
+    const method = extractPaymentMethod(pn);
+    if (!amount || !method) return null;
+    entries.push({
+      kind: "expense",
+      amount,
+      description: DEFAULT_DESCRIPTION[method],
+      merchant: null,
+      counterparty: null,
+      category: "outros",
+      date: extractDate(n, today),
+      payment_method: method,
+      installments: extractInstallments(pn),
+      account_hint: null,
+    });
+  }
+  if (!entries.length || entries.length > 5) return null;
+  return emptyInterpretation("record", { entries, confidence: 0.75 });
+}
+
+const DEFAULT_DESCRIPTION: Record<NonNullable<Entry["payment_method"]>, string> = {
+  credito: "Compra no cartão",
+  debito: "Compra no débito",
+  pix: "Pagamento no Pix",
+  dinheiro: "Pagamento em dinheiro",
+  boleto: "Pagamento de boleto",
+  transferencia: "Transferência",
+};
+
 function parseRecord(original: string, n: string, today: ISODate): Interpretation | null {
   const isIncome = INCOME_VERBS.test(n);
   const isExpense = EXPENSE_VERBS.test(n);
-  if (!isIncome && !isExpense) return null;
+  if (!isIncome && !isExpense) return parseByPaymentMethod(original, n, today);
+  // "gastei 1.000 no cartão e 50 no pix": vários valores, cada um com a sua forma
+  if (!isIncome) {
+    const rest = original.replace(/^\s*\S+\s+/, "");
+    const multi = parseByPaymentMethod(rest, normalize(rest), today);
+    if (multi && multi.entries.length > 1) return multi;
+  }
   const kind: "income" | "expense" = isIncome && !isExpense ? "income" : "expense";
   const amount = extractAmount(original);
   const category = guessCategorySlug(original, kind);
@@ -166,6 +209,12 @@ function parseQuery(original: string, n: string): Interpretation | null {
     return q("recent", { limit, search: null, category: /gastos|despesas/.test(word) ? "expense" : /receitas/.test(word) ? "income" : null });
   }
   const period = parsePeriod(n);
+  if (/(cada|por) forma de pagamento|formas? de pagamento|cartao e (quanto )?(no )?pix|pix e (quanto )?(no )?cartao/.test(n)) return q("by_payment_method", { period });
+  const method = extractPaymentMethod(n);
+  if (method && !/\b(saldo|disponivel)\b/.test(n)) {
+    if (/(entrou|recebi|receitas?|ganhei|faturei|entrada)/.test(n)) return q("income_total", { period, payment_method: method });
+    if (/(gastei|gasto|gastos|despesas?|paguei|saiu|saida|comprei)/.test(n)) return q("expenses_total", { period, payment_method: method });
+  }
   if (/maior (despesa|gasto|compra)/.test(n)) return q("largest_expense", { period });
   if (/maior (receita|entrada|recebimento)/.test(n)) return q("largest_income", { period });
   if (/(cada|por) cliente|de quem (recebi|entrou)/.test(n)) return q("by_client", { period });
