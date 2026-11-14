@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { withUser } from "@/server/db/client";
+import { CategoryIcon } from "@/components/category-icon";
 import { listCategories } from "@/server/finance/engine";
 import { budgetStatuses } from "@/server/finance/budgets";
 import { formatBRL } from "@/server/finance/money";
@@ -37,7 +38,8 @@ export default async function Limits({ searchParams }: { searchParams: Promise<{
                 <li key={b.id} className={`grid gap-2 ${editing?.id === b.id ? "-mx-3 rounded-[16px] bg-gain-soft/60 px-3 py-2.5" : ""}`}>
                   <div className="flex flex-col gap-1 sm:flex-row sm:items-baseline sm:justify-between sm:gap-3">
                     <span className="font-semibold">
-                      {b.icon} {b.name}
+                      <CategoryIcon icon={b.icon} size={16} className="mr-1.5 text-ink-faint" />
+                      {b.name}
                     </span>
                     <span className="flex items-center justify-between gap-2 text-sm sm:justify-end">
                       <span className="money mr-auto sm:mr-0">
@@ -83,7 +85,7 @@ export default async function Limits({ searchParams }: { searchParams: Promise<{
                     {/* Na edição a categoria fica fixa; só o valor muda */}
                     <input type="hidden" name="category" value={editing.slug ?? ""} />
                     <select className="input opacity-70" defaultValue={editing.slug ?? ""} disabled>
-                      <option value={editing.slug ?? ""}>{editing.categoryId ? `${editing.icon} ${editing.name}` : "Total do mês (todas as despesas)"}</option>
+                      <option value={editing.slug ?? ""}>{editing.categoryId ? editing.name : "Total do mês (todas as despesas)"}</option>
                     </select>
                   </>
                 ) : (
@@ -91,7 +93,7 @@ export default async function Limits({ searchParams }: { searchParams: Promise<{
                     <option value="">Total do mês (todas as despesas)</option>
                     {cats.map((c) => (
                       <option key={c.id} value={c.slug}>
-                        {c.icon} {c.name}
+                        {c.name}
                       </option>
                     ))}
                   </select>

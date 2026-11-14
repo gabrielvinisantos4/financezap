@@ -35,7 +35,7 @@ export default async function StalledSignups() {
         A mensagem usa o modelo <b className="text-ink">{env().RECOVERY_TEMPLATE_NAME}</b>, aprovado pela Meta (é o único jeito de chamar quem nunca falou com o robô). Cada pessoa recebe no máximo 3 vezes, com {RECOVERY_COOLDOWN_DAYS} dias de intervalo.
       </p>
       {rows.length === 0 ? (
-        <Empty title="Ninguém parado">Todo mundo que se cadastrou virou cliente. 🎉</Empty>
+        <Empty title="Ninguém parado">Todo mundo que se cadastrou virou cliente.</Empty>
       ) : (
         <Panel>
           <ul className="divide-y divide-line">

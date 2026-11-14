@@ -1,9 +1,10 @@
 import Link from "next/link";
+import { CategoryIcon, PaymentMethodIcon } from "@/components/category-icon";
 import { withUser } from "@/server/db/client";
 import { listTransactions } from "@/server/finance/queries";
 import { getTransaction, listAccounts, listCategories } from "@/server/finance/engine";
 import { addMonths, formatBR, monthLabel } from "@/server/finance/dates";
-import { isPaymentMethod, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
+import { isPaymentMethod, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
 import { appContext, monthFromParam } from "@/server/app-context";
 import { Badge, Empty, Money, PageHeader, Panel } from "@/components/ui";
 import { EntryForm } from "@/components/entry-form";
@@ -71,7 +72,7 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
         <select className="input" name="categoria" defaultValue={sp.categoria ?? ""} aria-label="Categoria">
           <option value="">Todas as categorias</option>
           {data.categories.map((c) => (
-            <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
+            <option key={c.id} value={c.id}>{c.name}</option>
           ))}
         </select>
         <select className="input" name="forma" defaultValue={sp.forma ?? ""} aria-label="Forma de pagamento">
@@ -168,11 +169,11 @@ export default async function Entries({ searchParams }: { searchParams: Promise<
                         </p>
                         <div className="mt-1 flex flex-wrap gap-1">
                           {t.kind !== "income" && t.kind !== "expense" && <Badge>{KIND[t.kind]}</Badge>}
-                          {isPaymentMethod(t.paymentMethod) && <Badge>{PAYMENT_METHOD_ICONS[t.paymentMethod]} {PAYMENT_METHOD_LABELS[t.paymentMethod]}</Badge>}
+                          {isPaymentMethod(t.paymentMethod) && <Badge><PaymentMethodIcon method={t.paymentMethod} size={12} className="mr-1" />{PAYMENT_METHOD_LABELS[t.paymentMethod]}</Badge>}
                           {t.status === "pending" && <Badge tone="coin">{t.kind === "income" ? "A receber" : "A pagar"} {t.dueOn ? formatBR(t.dueOn).slice(0, 5) : ""}</Badge>}
                         </div>
                       </td>
-                      <td className="px-3 py-3">{t.categoryName ? `${t.categoryIcon} ${t.categoryName}` : "—"}</td>
+                      <td className="px-3 py-3">{t.categoryName ? <span className="inline-flex items-center gap-1.5"><CategoryIcon icon={t.categoryIcon} size={15} className="text-ink-faint" />{t.categoryName}</span> : "—"}</td>
                       <td className="px-3 py-3">{t.accountName}</td>
                       <td className="whitespace-nowrap px-3 py-3 text-right font-semibold">
                         {signed === 0 ? <Money cents={t.amountCents} /> : <Money cents={signed} sign />}

@@ -1,4 +1,5 @@
 import { withUser } from "@/server/db/client";
+import { CATEGORY_ICON_CHOICES, CategoryIcon } from "@/components/category-icon";
 import { listAccounts, listCategories } from "@/server/finance/engine";
 import { listRecurring } from "@/server/finance/queries";
 import { formatBRL } from "@/server/finance/money";
@@ -30,7 +31,8 @@ export default async function Categories() {
                 .filter((c) => c.kind === kind)
                 .map((c) => (
                   <li key={c.id} className="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-sm">
-                    {c.icon} {c.name}
+                    <CategoryIcon icon={c.icon} size={15} className="text-ink-faint" />
+                    {c.name}
                     {!c.isSystem && (
                       <form action={archiveCategoryAction}>
                         <input type="hidden" name="id" value={c.id} />
@@ -48,16 +50,24 @@ export default async function Categories() {
         <Panel title="Nova categoria">
           {canCustom ? (
             <ActionForm action={createCategoryAction} resetOnSuccess>
-              <div className="grid grid-cols-[80px_1fr] gap-3">
-                <label className="field">
-                  <span>Ícone</span>
-                  <input className="input text-center" name="icon" maxLength={4} placeholder="🐶" />
-                </label>
-                <label className="field">
-                  <span>Nome</span>
-                  <input className="input" name="name" placeholder="Ex.: Pet" required />
-                </label>
-              </div>
+              <label className="field">
+                <span>Nome</span>
+                <input className="input" name="name" placeholder="Ex.: Pet" required />
+              </label>
+              <fieldset className="field">
+                <legend className="mb-1.5 text-sm font-semibold text-ink-soft">Ícone</legend>
+                <div className="grid grid-cols-6 gap-1.5 sm:grid-cols-8">
+                  {CATEGORY_ICON_CHOICES.map((o, i) => (
+                    <label key={o.emoji} title={o.label} className="cursor-pointer">
+                      <input type="radio" name="icon" value={o.emoji} defaultChecked={i === 0} className="peer sr-only" />
+                      <span className="grid h-10 place-items-center rounded-[12px] text-ink-soft shadow-[inset_0_0_0_1px_var(--hair-strong)] transition-colors hover:text-ink peer-checked:bg-gain-soft peer-checked:text-gain peer-checked:shadow-[inset_0_0_0_1.5px_var(--color-gain)] peer-focus-visible:outline peer-focus-visible:outline-2 peer-focus-visible:outline-[var(--color-gain)]">
+                        <CategoryIcon icon={o.emoji} size={18} />
+                        <span className="sr-only">{o.label}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
               <label className="field">
                 <span>Tipo</span>
                 <select className="input" name="kind">

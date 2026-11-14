@@ -1,5 +1,6 @@
 "use client";
 
+import { CategoryIcon } from "@/components/category-icon";
 import { useState } from "react";
 
 /**
@@ -25,7 +26,7 @@ export function SpendingBreakdown({ rows, prevLabel, limit = 10 }: { rows: Break
   const rest = rows.slice(SLOTS.length);
   const restCents = rest.reduce((s, r) => s + r.cents, 0);
   const segments = [
-    ...top.map((r, i) => ({ key: r.key, name: `${r.icon} ${r.name}`, label: r.name, cents: r.cents, color: SLOTS[i] })),
+    ...top.map((r, i) => ({ key: r.key, name: r.name, label: r.name, cents: r.cents, color: SLOTS[i] })),
     ...(restCents > 0 ? [{ key: "__outras", name: `Outras (${rest.length})`, label: `Outras (${rest.length})`, cents: restCents, color: OTHER }] : []),
   ];
   const colorOf = (key: string) => segments.find((s) => s.key === key)?.color ?? OTHER;
@@ -111,8 +112,9 @@ export function SpendingBreakdown({ rows, prevLabel, limit = 10 }: { rows: Break
               className={`grid grid-cols-[auto_1fr_auto] items-center gap-x-3 gap-y-1 rounded-[14px] px-2.5 py-2 outline-none transition-colors ${isActive ? "bg-paper" : ""}`}
             >
               <span className="h-2.5 w-2.5 rounded-full" style={{ background: colorOf(r.key) }} aria-hidden />
-              <span className="min-w-0 truncate text-sm">
-                {r.icon} {r.name}
+              <span className="flex min-w-0 items-center gap-1.5 text-sm">
+                <CategoryIcon icon={r.icon} size={14} className="text-ink-faint" />
+                <span className="truncate">{r.name}</span>
               </span>
               <span className="money text-right text-sm font-semibold tabular-nums">{brl(r.cents)}</span>
               <span aria-hidden />

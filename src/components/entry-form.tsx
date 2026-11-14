@@ -77,7 +77,7 @@ export function EntryForm({ categories, accounts, defaults }: { categories: Opt[
               .filter((c) => c.kind === kind)
               .map((c) => (
                 <option key={c.id} value={c.id}>
-                  {c.icon} {c.name}
+                  {c.name}
                 </option>
               ))}
           </select>

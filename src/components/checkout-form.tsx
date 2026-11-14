@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, CreditCard, Lock, QrCode } from "lucide-react";
 import { useState } from "react";
 import { ActionForm, Submit } from "./forms";
 import { checkoutAction } from "@/app/actions/app";
@@ -41,7 +42,7 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
             {cycle === "yearly" && p.yearlySavings && <span className="text-xs font-semibold text-gain">{p.yearlySavings}</span>}
             <ul className="mt-3 grid gap-1 text-sm text-ink-soft">
               {p.features.slice(0, 4).map((f) => (
-                <li key={f} className="flex gap-1.5"><span aria-hidden="true" className="text-gain">✓</span>{f}</li>
+                <li key={f} className="flex gap-1.5"><Check size={15} strokeWidth={2.25} aria-hidden="true" className="mt-0.5 shrink-0 text-gain" />{f}</li>
               ))}
             </ul>
           </label>
@@ -52,7 +53,7 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
         <legend className="mb-2 font-semibold">2. Forma de pagamento</legend>
         <label className={`cursor-pointer rounded-[24px] bg-surface p-5 transition-shadow ${method === "credit_card" ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
           <input type="radio" name="method" value="credit_card" checked={method === "credit_card"} onChange={() => setMethod("credit_card")} className="sr-only" />
-          <span className="block font-semibold">💳 Cartão de crédito</span>
+          <span className="flex items-center gap-2 font-semibold"><CreditCard size={17} strokeWidth={1.75} aria-hidden="true" className="text-ink-soft" />Cartão de crédito</span>
           <span className="mt-1 block text-sm text-ink-soft">
             {trialUntil
               ? `Use grátis até ${trialUntil}. A primeira cobrança só acontece nesse dia e depois ${cycle === "monthly" ? "todo mês" : "todo ano"}. Cancele antes e não paga nada.`
@@ -62,7 +63,7 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
         </label>
         <label className={`cursor-pointer rounded-[24px] bg-surface p-5 transition-shadow ${method === "pix" ? "shadow-[inset_0_0_0_2px_var(--color-gain)]" : "shadow-[inset_0_0_0_1px_var(--hair-strong)] hover:shadow-[inset_0_0_0_1px_var(--color-gain)]"}`}>
           <input type="radio" name="method" value="pix" checked={method === "pix"} onChange={() => setMethod("pix")} className="sr-only" />
-          <span className="block font-semibold">⚡ Pix</span>
+          <span className="flex items-center gap-2 font-semibold"><QrCode size={17} strokeWidth={1.75} aria-hidden="true" className="text-ink-soft" />Pix</span>
           <span className="mt-1 block text-sm text-ink-soft">
             {trialUntil && inTrial
               ? `Seu teste vai até ${pixTrialUntil ?? trialUntil}. O Pix chega no seu e-mail para pagar no fim do teste e o acesso continua sem interrupção.`
@@ -79,7 +80,7 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
           <span>CPF ou CNPJ do pagador</span>
           <input className="input money" name="cpfCnpj" inputMode="numeric" autoComplete="off" value={doc} onChange={(e) => setDoc(cpfMask(e.target.value))} placeholder="000.000.000-00" required />
         </label>
-        <p className="text-xs text-ink-faint">🔒 Por que pedimos? Toda cobrança no Brasil precisa do CPF de quem paga (regra do Banco Central). Ele vai direto para o Asaas, a instituição que processa o pagamento, e não fica salvo no FinanceZap.</p>
+        <p className="text-xs text-ink-faint"><Lock size={12} strokeWidth={2} aria-hidden="true" className="mr-1 inline-block align-[-0.1em]" />Por que pedimos? Toda cobrança no Brasil precisa do CPF de quem paga (regra do Banco Central). Ele vai direto para o Asaas, a instituição que processa o pagamento, e não fica salvo no FinanceZap.</p>
       </div>}
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">

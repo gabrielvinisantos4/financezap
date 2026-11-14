@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { withUser } from "@/server/db/client";
 import { availability, dailyExpenses, listTransactions, payables, periodSummary, expensesByCategoryWithCards, totalsByPaymentMethod } from "@/server/finance/queries";
-import { isPaymentMethod, PAYMENT_METHOD_ICONS, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
+import { isPaymentMethod, PAYMENT_METHOD_LABELS } from "@/server/finance/payment-methods";
 import { budgetStatuses } from "@/server/finance/budgets";
 import { listAccounts, listCategories } from "@/server/finance/engine";
 import { addDays, addMonths, daysInMonth, endOfMonth, formatBR, monthLabel, monthName, resolvePeriod, startOfMonth } from "@/server/finance/dates";
@@ -10,6 +10,7 @@ import { getLinkedNumber } from "@/server/whatsapp/linking";
 import { env } from "@/server/config/env";
 import { LinkWhatsapp } from "@/components/link-whatsapp";
 import { Icon } from "@/components/icons";
+import { CategoryIcon, PaymentMethodIcon } from "@/components/category-icon";
 import { Empty, Money, Panel, PanelLink, Stat } from "@/components/ui";
 import { Ring } from "@/components/ring";
 import { EntryForm } from "@/components/entry-form";
@@ -174,8 +175,8 @@ export default async function Overview() {
                   const cents = t.kind === "income" || t.kind === "refund" ? t.amountCents : t.kind === "expense" ? -t.amountCents : 0;
                   return (
                     <li key={t.id} className={`flex items-center gap-3 py-3 ${i ? "border-t border-line" : ""}`}>
-                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] text-lg ${cents > 0 ? "bg-gain-soft" : "bg-paper"}`} aria-hidden="true">
-                        {t.categoryIcon || "•"}
+                      <span className={`grid h-10 w-10 shrink-0 place-items-center rounded-[13px] ${cents > 0 ? "bg-gain-soft text-gain" : "bg-paper text-ink-soft"}`} aria-hidden="true">
+                        <CategoryIcon icon={t.categoryIcon} size={18} />
                       </span>
                       <div className="min-w-0 flex-1">
                         <p className="truncate font-semibold">{t.description}</p>
@@ -206,7 +207,8 @@ export default async function Overview() {
                       <b className="absolute text-[0.95rem] tracking-[-0.03em]">{b.pct}%</b>
                     </span>
                     <span className="mt-2 w-full truncate text-sm font-semibold">
-                      {b.icon} {b.name}
+                      <CategoryIcon icon={b.icon} size={14} className="mr-1 text-ink-faint" />
+                      {b.name}
                     </span>
                     <span className="money text-[0.7rem] text-ink-faint">
                       {formatBRL(b.spentCents)} de {formatBRL(b.limitCents)}
@@ -228,7 +230,10 @@ export default async function Overview() {
                       <li key={m.method ?? "none"}>
                         <Link href={`/app/lancamentos?mes=${month.from.slice(0, 7)}&tipo=expense&forma=${known ? m.method : "nenhuma"}`} className="grid gap-1.5 rounded-[14px] px-1 py-1 hover:bg-paper">
                           <span className="flex items-center justify-between gap-3 text-sm">
-                            <span className="font-medium">{known ? `${PAYMENT_METHOD_ICONS[m.method as keyof typeof PAYMENT_METHOD_ICONS]} ${PAYMENT_METHOD_LABELS[m.method as keyof typeof PAYMENT_METHOD_LABELS]}` : "❔ Sem forma informada"}</span>
+                            <span className="flex items-center gap-2 font-medium">
+                              <PaymentMethodIcon method={known ? m.method : null} className="text-ink-faint" />
+                              {known ? PAYMENT_METHOD_LABELS[m.method as keyof typeof PAYMENT_METHOD_LABELS] : "Sem forma informada"}
+                            </span>
                             <span className="money font-semibold">{formatBRL(m.totalCents)}</span>
                           </span>
                           <span className="h-1.5 overflow-hidden rounded-full bg-line">
