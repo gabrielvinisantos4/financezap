@@ -1,1 +1,1 @@
-ALTER TYPE "public"."affiliate_status" ADD VALUE 'left';
+ALTER TYPE "public"."affiliate_status" ADD VALUE IF NOT EXISTS 'left';
