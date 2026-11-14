@@ -44,7 +44,8 @@ export const inboundStatus = pgEnum("inbound_status", ["queued", "processing", "
 export const usageType = pgEnum("usage_type", ["ai_call", "wa_inbound", "wa_outbound"]);
 export const dataRequestType = pgEnum("data_request_type", ["export", "delete"]);
 export const dataRequestStatus = pgEnum("data_request_status", ["requested", "processing", "done", "rejected"]);
-export const affiliateStatus = pgEnum("affiliate_status", ["active", "blocked"]);
+// left = a própria pessoa saiu do programa (pode voltar); blocked = suspenso pelo admin
+export const affiliateStatus = pgEnum("affiliate_status", ["active", "blocked", "left"]);
 export const commissionStatus = pgEnum("commission_status", ["credited", "reversed"]);
 export const payoutMethod = pgEnum("payout_method", ["asaas_split", "pix"]);
 export const payoutStatus = pgEnum("payout_status", ["awaiting_approval", "processing", "paid", "failed", "canceled"]);

@@ -3,7 +3,7 @@ import { affiliateDashboard, getAffiliateByUser, listPayoutsForAffiliate, maskPi
 import { env } from "@/server/config/env";
 import { listActivePlans } from "@/server/billing/subscriptions";
 import { ActionForm, Submit } from "@/components/forms";
-import { joinAffiliateAction, savePixAction, saveWalletAction } from "@/app/actions/affiliates";
+import { changeCodeAction, joinAffiliateAction, leaveAffiliateAction, rejoinAffiliateAction, savePixAction, saveWalletAction } from "@/app/actions/affiliates";
 import { PayoutTabs } from "@/components/payout-tabs";
 import { Badge, Empty, Money, PageHeader, Panel, Stat } from "@/components/ui";
 import { CopyLink } from "@/components/copy-link";
@@ -33,7 +33,7 @@ export default async function AffiliatesPage() {
           <Panel title="Como funciona">
             <ol className="grid gap-4 text-ink-soft">
               <li><b className="text-ink">1. Pegue seu link.</b> Ele fica assim: agentefinancezap.com.br/r/seu-codigo</li>
-              <li><b className="text-ink">2. Divulgue.</b> Quem entrar pelo seu link e assinar em até {60} dias fica ligado a você.</li>
+              <li><b className="text-ink">2. Divulgue.</b> Quem entrar pelo seu link e criar conta em até {60} dias fica ligado a você.</li>
               <li><b className="text-ink">3. Receba todo mês.</b> O Asaas separa sua parte na hora do pagamento e manda direto para a sua conta. Não depende de ninguém transferir.</li>
             </ol>
             {example && cheapest && (
@@ -79,6 +79,16 @@ export default async function AffiliatesPage() {
       {aff.status === "blocked" && (
         <p className="mb-6 rounded-[16px] bg-loss-soft px-4 py-3 text-sm text-ink">Seu link de afiliado está suspenso{aff.blockedReason ? `: ${aff.blockedReason}` : "."} Fale com {`contato@agentefinancezap.com.br`}.</p>
       )}
+      {aff.status === "left" && (
+        <div className="card mb-6 flex flex-wrap items-center justify-between gap-4 px-5 py-5 text-sm text-ink">
+          <p className="max-w-2xl">
+            <b>Você saiu do programa de afiliados.</b> Seu link está desativado e as novas mensalidades dos seus indicados não geram comissão. O que você já ganhou continua sendo pago. Se voltar, seu link e seus indicados voltam com você.
+          </p>
+          <ActionForm action={rejoinAffiliateAction} className="grid gap-2">
+            <Submit pendingText="Reativando…" className="btn btn-primary">Voltar a ser afiliado</Submit>
+          </ActionForm>
+        </div>
+      )}
       {!ready && aff.status === "active" && (
         <p className="mb-6 rounded-[16px] bg-coin-soft px-4 py-3 text-sm text-ink">
           <b>Falta dizer onde você quer receber.</b> Cadastre sua conta Asaas ou uma chave Pix em “Onde você recebe”. Quem assinar antes passa a gerar comissão assim que você cadastrar.
@@ -96,8 +106,34 @@ export default async function AffiliatesPage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <Panel title="Seu link">
-          <CopyLink url={url} shareText="Conheci o FinanceZap, um assistente que organiza suas finanças pelo WhatsApp. Dá para testar grátis:" />
-          <p className="mt-4 text-sm text-ink-soft">Quem abrir esse link e criar conta em até 60 dias fica ligado a você. A comissão vale para todas as mensalidades pagas enquanto a pessoa for assinante.</p>
+          {aff.status === "left" ? (
+            <Empty title="Link desativado">Volte a ser afiliado para ativar de novo o link /r/{aff.code}.</Empty>
+          ) : (
+            <>
+              <CopyLink url={url} shareText="Conheci o FinanceZap, um assistente que organiza suas finanças pelo WhatsApp. Dá para testar grátis:" />
+              <p className="mt-4 text-sm text-ink-soft">Quem abrir esse link e criar conta em até 60 dias fica ligado a você. A comissão vale para todas as mensalidades pagas enquanto a pessoa for assinante.</p>
+              {aff.status === "active" && (
+                <details className="group mt-5 rounded-[16px] border border-line px-4 py-3">
+                  <summary className="flex cursor-pointer list-none items-center justify-between gap-3 text-sm font-semibold [&::-webkit-details-marker]:hidden">
+                    Editar o código do link
+                    <span className="text-lg leading-none text-ink-faint transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+                  </summary>
+                  <ActionForm action={changeCodeAction} className="mt-4 grid gap-3">
+                    <label className="field">
+                      <span>Novo código</span>
+                      <div className="flex items-center gap-2">
+                        <span className="shrink-0 text-sm text-ink-faint">/r/</span>
+                        <input className="input" name="code" defaultValue={aff.code} minLength={3} maxLength={24} pattern="[a-zA-Z0-9-]+" required />
+                      </div>
+                      <small className="text-ink-faint">Só letras sem acento, números e hífen.</small>
+                    </label>
+                    <p className="rounded-[12px] bg-coin-soft px-3 py-2 text-xs text-ink">O link antigo para de funcionar, então troque também onde você já divulgou. Quem já criou conta pelo seu link continua ligado a você.</p>
+                    <Submit pendingText="Salvando…" className="btn btn-primary w-fit">Salvar novo código</Submit>
+                  </ActionForm>
+                </details>
+              )}
+            </>
+          )}
         </Panel>
 
         <Panel title="Onde você recebe">
@@ -210,6 +246,30 @@ export default async function AffiliatesPage() {
           <p className="mt-4 text-xs text-ink-faint">Valores calculados sobre o valor líquido (depois da taxa do Asaas). Estornos e chargebacks cancelam a comissão daquele pagamento; se ela já tiver sido paga por Pix, o valor é descontado no próximo repasse.</p>
         </Panel>
       </div>
+
+      {aff.status === "active" && (
+        <details className="group card mt-6 px-5 py-4 sm:px-6">
+          <summary className="flex cursor-pointer list-none items-center justify-between gap-3 font-semibold [&::-webkit-details-marker]:hidden">
+            Sair do programa de afiliados
+            <span className="text-lg leading-none text-ink-faint transition-transform group-open:rotate-45" aria-hidden="true">+</span>
+          </summary>
+          <div className="mt-4 grid max-w-2xl gap-4 text-sm text-ink-soft">
+            <ul className="grid list-disc gap-1.5 pl-5">
+              <li>Seu link para de funcionar na hora.</li>
+              <li>As próximas mensalidades dos seus indicados deixam de gerar comissão.</li>
+              <li>O que você já ganhou continua sendo pago normalmente.</li>
+              <li>Você pode voltar quando quiser, com o mesmo link e os mesmos indicados.</li>
+            </ul>
+            <ActionForm action={leaveAffiliateAction} className="grid gap-3">
+              <label className="flex items-start gap-3">
+                <input type="checkbox" name="confirm" className="mt-1 h-4 w-4 accent-[var(--color-loss)]" required />
+                <span>Entendi e quero sair do programa.</span>
+              </label>
+              <Submit pendingText="Saindo…" className="btn btn-danger w-fit">Sair do programa</Submit>
+            </ActionForm>
+          </div>
+        </details>
+      )}
     </>
   );
 }

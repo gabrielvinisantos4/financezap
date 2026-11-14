@@ -4,7 +4,7 @@ import { closeDb, db } from "@/server/db/client";
 import { affiliateCommissions, affiliatePayouts, affiliates, plans, subscriptions, users } from "@/server/db/schema";
 import { handleAsaasWebhook, startCheckout } from "@/server/billing/subscriptions";
 import { setAsaasFetcher } from "@/server/billing/asaas";
-import { affiliateDashboard, approvePixPayout, attachReferral, createAffiliate, createPixPayouts, normalizePixKey, pixBalance, registerClick, setAffiliatePix, setAffiliateStatus, setAffiliateWallet, splitForCustomer } from "@/server/affiliates/affiliates";
+import { affiliateDashboard, approvePixPayout, attachReferral, changeAffiliateCode, createAffiliate, leaveAffiliateProgram, rejoinAffiliateProgram, createPixPayouts, normalizePixKey, pixBalance, registerClick, setAffiliatePix, setAffiliateStatus, setAffiliateWallet, splitForCustomer } from "@/server/affiliates/affiliates";
 import { makeUser, resetDb } from "./helpers";
 import { resetEnvCache } from "@/server/config/env";
 
@@ -165,6 +165,77 @@ describe("programa de afiliados", () => {
     expect(st.calls.filter((c) => c === "POST /subscriptions")).toHaveLength(2);
     const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, client.id));
     expect(sub.affiliateId).toBeNull();
+  });
+
+  it("troca o código do link: o novo vale, o antigo não, e os indicados continuam ligados", async () => {
+    fakeAsaas();
+    const { owner, aff } = await makeAffiliate("maria");
+    await makeAffiliate("joao");
+    const antes = await makeUser();
+    await attachReferral(antes.id, "maria");
+
+    await expect(changeAffiliateCode(owner.id, "joao")).rejects.toThrow(/em uso/);
+    await expect(changeAffiliateCode(owner.id, "ma")).rejects.toThrow();
+    const novo = await changeAffiliateCode(owner.id, "Maria-Souza");
+    expect(novo.code).toBe("maria-souza");
+    expect(await registerClick("maria")).toBeNull();
+    expect(await registerClick("maria-souza")).toBe("maria-souza");
+
+    const depois = await makeUser();
+    await attachReferral(depois.id, "maria-souza");
+    const d = await affiliateDashboard(novo);
+    expect(d.signups).toBe(2);
+    const [u] = await db().select().from(users).where(eq(users.id, antes.id));
+    expect(u.referredByAffiliateId).toBe(aff.id);
+  });
+
+  it("sair do programa desliga o link e o split; voltar religa com os mesmos indicados", async () => {
+    const st = fakeAsaas();
+    const { owner, aff } = await makeAffiliate("maria");
+    await setAffiliateWallet(owner.id, WALLET);
+    const client = await makeUser();
+    await attachReferral(client.id, "maria");
+    await startCheckout(client.id, { planSlug: "basico", cycle: "monthly", method: "pix", cpfCnpj: "12345678909" });
+    const [sub] = await db().select().from(subscriptions).where(eq(subscriptions.userId, client.id));
+    expect(sub.affiliateId).toBe(aff.id);
+
+    await leaveAffiliateProgram(owner.id);
+    const [saiu] = await db().select().from(affiliates).where(eq(affiliates.id, aff.id));
+    expect(saiu.status).toBe("left");
+    expect(await registerClick("maria")).toBeNull();
+    expect(await splitForCustomer(client.id)).toBeNull();
+    expect(st.bodies.get(`PUT /subscriptions/${sub.providerSubscriptionId}`)).toMatchObject({ split: [] });
+    await expect(leaveAffiliateProgram(owner.id)).rejects.toThrow(/já saiu/);
+    await expect(changeAffiliateCode(owner.id, "outra")).resolves.toBeTruthy();
+
+    await rejoinAffiliateProgram(owner.id);
+    const [voltou] = await db().select().from(affiliates).where(eq(affiliates.id, aff.id));
+    expect(voltou.status).toBe("active");
+    expect(await registerClick("outra")).toBe("outra");
+    expect(st.bodies.get(`PUT /subscriptions/${sub.providerSubscriptionId}`)).toMatchObject({ split: [{ walletId: WALLET, percentualValue: 30 }] });
+    const [subDepois] = await db().select().from(subscriptions).where(eq(subscriptions.userId, client.id));
+    expect(subDepois.affiliateId).toBe(aff.id);
+  });
+
+  it("quem saiu do programa ainda recebe por Pix o que já ganhou", async () => {
+    fakeAsaas();
+    const { owner, aff } = await makeAffiliate("maria");
+    await setAffiliatePix(owner.id, "EMAIL", "maria@exemplo.test");
+    const old = new Date(Date.now() - 30 * 86400_000);
+    await db().insert(affiliateCommissions).values({ affiliateId: aff.id, providerPaymentId: "pay_antigo", netCents: 10000, commissionCents: 3000, status: "credited", createdAt: old });
+    await leaveAffiliateProgram(owner.id);
+    expect(await createPixPayouts()).toBe(1);
+    const [p] = await db().select().from(affiliatePayouts).where(eq(affiliatePayouts.affiliateId, aff.id));
+    expect(p.amountCents).toBe(3000);
+  });
+
+  it("bloqueado pelo admin não consegue sair nem voltar sozinho", async () => {
+    fakeAsaas();
+    const { owner, aff } = await makeAffiliate("maria");
+    await setAffiliateStatus(aff.id, "blocked", "spam");
+    await expect(leaveAffiliateProgram(owner.id)).rejects.toThrow(/suspenso/);
+    await expect(rejoinAffiliateProgram(owner.id)).rejects.toThrow(/suspenso/);
+    await expect(changeAffiliateCode(owner.id, "nova")).rejects.toThrow(/suspenso/);
   });
 
   it("valida código, carteira e não deixa indicar a si mesmo", async () => {

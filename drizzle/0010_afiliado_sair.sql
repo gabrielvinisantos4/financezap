@@ -1,0 +1,1 @@
+ALTER TYPE "public"."affiliate_status" ADD VALUE 'left';

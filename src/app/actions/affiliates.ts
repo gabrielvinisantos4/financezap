@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { requireAdmin, requireUser } from "@/server/auth/session";
-import { approvePixPayout, cancelPayout, createAffiliate, createPixPayouts, markPayoutPaid, setAffiliatePix, setAffiliateStatus, setAffiliateWallet } from "@/server/affiliates/affiliates";
+import { approvePixPayout, cancelPayout, changeAffiliateCode, createAffiliate, leaveAffiliateProgram, rejoinAffiliateProgram, createPixPayouts, markPayoutPaid, setAffiliatePix, setAffiliateStatus, setAffiliateWallet } from "@/server/affiliates/affiliates";
 import { FinanceError } from "@/server/finance/errors";
 import { rateLimit } from "@/server/security/rate-limit";
 import { db } from "@/server/db/client";
@@ -28,6 +28,35 @@ export async function joinAffiliateAction(_: FormState, form: FormData): Promise
     await createAffiliate(user.id, String(form.get("code") ?? ""));
     revalidatePath("/app/afiliados");
     return { message: "Pronto! Seu link de afiliado está ativo." };
+  });
+}
+
+export async function changeCodeAction(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  if (!(await rateLimit(`affcode:${user.id}`, 5, 86400))) return { error: "Você já trocou o código várias vezes hoje. Tente de novo amanhã." };
+  return guard(async () => {
+    const a = await changeAffiliateCode(user.id, String(form.get("code") ?? ""));
+    revalidatePath("/app/afiliados");
+    return { message: `Pronto! Seu link agora termina em /r/${a.code}.` };
+  });
+}
+
+export async function leaveAffiliateAction(_: FormState, form: FormData): Promise<FormState> {
+  const user = await requireUser();
+  return guard(async () => {
+    if (form.get("confirm") !== "on") return { error: "Marque a confirmação para sair do programa." };
+    await leaveAffiliateProgram(user.id);
+    revalidatePath("/app/afiliados");
+    return { message: "Você saiu do programa de afiliados." };
+  });
+}
+
+export async function rejoinAffiliateAction(_: FormState): Promise<FormState> {
+  const user = await requireUser();
+  return guard(async () => {
+    await rejoinAffiliateProgram(user.id);
+    revalidatePath("/app/afiliados");
+    return { message: "Bem-vindo de volta! Seu link está ativo de novo." };
   });
 }
 

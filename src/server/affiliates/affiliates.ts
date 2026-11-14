@@ -81,6 +81,44 @@ export async function createAffiliate(userId: string, rawCode: string): Promise<
   return a;
 }
 
+/**
+ * Troca o código do link. Os indicados e as comissões continuam ligados ao afiliado
+ * (o vínculo é pelo id); só o endereço antigo /r/<código> deixa de funcionar.
+ */
+export async function changeAffiliateCode(userId: string, rawCode: string): Promise<Affiliate> {
+  const aff = await getAffiliateByUser(userId);
+  if (!aff) throw new FinanceError("not_found", "Ative seu link de afiliado primeiro.");
+  if (aff.status === "blocked") throw new FinanceError("invalid", "Seu link está suspenso. Fale com o suporte.");
+  const code = affiliateCodeSchema.parse(rawCode);
+  if (code === aff.code.toLowerCase()) return aff;
+  if (await codeTaken(code)) throw new FinanceError("conflict", "Esse código já está em uso. Escolha outro.");
+  const [a] = await db().update(affiliates).set({ code }).where(eq(affiliates.id, aff.id)).returning();
+  await opEvent("info", "affiliate.code_changed", "Afiliado trocou o código do link", { from: aff.code, to: code }, userId);
+  return a;
+}
+
+/**
+ * O próprio afiliado sai do programa: o link para de funcionar e as próximas mensalidades
+ * dos indicados deixam de gerar comissão. O que já foi ganho continua sendo pago.
+ */
+export async function leaveAffiliateProgram(userId: string) {
+  const aff = await getAffiliateByUser(userId);
+  if (!aff) throw new FinanceError("not_found", "Você não é afiliado.");
+  if (aff.status !== "active") throw new FinanceError("invalid", aff.status === "left" ? "Você já saiu do programa." : "Seu link está suspenso. Fale com o suporte.");
+  await setAffiliateStatus(aff.id, "left");
+  await opEvent("info", "affiliate.left", "Afiliado saiu do programa", { code: aff.code }, userId);
+}
+
+/** Volta ao programa com o mesmo código e os mesmos indicados. */
+export async function rejoinAffiliateProgram(userId: string) {
+  const aff = await getAffiliateByUser(userId);
+  if (!aff) throw new FinanceError("not_found", "Ative seu link de afiliado primeiro.");
+  if (aff.status === "blocked") throw new FinanceError("invalid", "Seu link está suspenso. Fale com o suporte.");
+  if (aff.status === "active") return;
+  await setAffiliateStatus(aff.id, "active");
+  await opEvent("info", "affiliate.rejoined", "Afiliado voltou ao programa", { code: aff.code }, userId);
+}
+
 /** Conta um clique no link e devolve o código normalizado (ou null se o link não vale). */
 export async function registerClick(code: string): Promise<string | null> {
   const a = await getActiveAffiliateByCode(code);
@@ -261,8 +299,8 @@ export async function syncAffiliateSplits(affiliateId: string) {
   }
 }
 
-/** Bloqueio pelo admin: tira o split das assinaturas dos indicados. */
-export async function setAffiliateStatus(affiliateId: string, status: "active" | "blocked", reason?: string | null) {
+/** Bloqueio pelo admin (ou saída do próprio afiliado): tira o split das assinaturas dos indicados. */
+export async function setAffiliateStatus(affiliateId: string, status: "active" | "blocked" | "left", reason?: string | null) {
   await db().update(affiliates).set({ status, blockedReason: status === "blocked" ? (reason ?? null) : null }).where(eq(affiliates.id, affiliateId));
   if (status === "active") return syncAffiliateSplits(affiliateId);
   const subs = await db().select().from(subscriptions).where(eq(subscriptions.affiliateId, affiliateId));
@@ -338,7 +376,8 @@ export async function createPixPayouts(now = new Date()) {
   const affs = await db()
     .select()
     .from(affiliates)
-    .where(and(eq(affiliates.payoutMethod, "pix"), eq(affiliates.status, "active"), isNotNull(affiliates.pixKey)));
+    // Quem saiu do programa ainda recebe o que já ganhou
+    .where(and(eq(affiliates.payoutMethod, "pix"), inArray(affiliates.status, ["active", "left"]), isNotNull(affiliates.pixKey)));
   let created = 0;
   for (const a of affs) {
     const open = await db()

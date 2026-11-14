@@ -71,6 +71,13 @@
       "when": 1794433214049,
       "tag": "0009_recuperar_cadastro",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1794679587184,
+      "tag": "0010_afiliado_sair",
+      "breakpoints": true
     }
   ]
 }

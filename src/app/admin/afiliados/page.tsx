@@ -90,7 +90,7 @@ export default async function AdminAffiliates() {
                   <p className="font-semibold">{r.name} <span className="text-ink-faint">· /r/{r.code}</span></p>
                   <p className="text-sm text-ink-soft">{pii ? r.email : mask(r.email)}</p>
                   <div className="mt-2 flex flex-wrap gap-1.5">
-                    <Badge tone={r.status === "active" ? "gain" : "loss"}>{r.status === "active" ? "Ativo" : "Bloqueado"}</Badge>
+                    <Badge tone={r.status === "active" ? "gain" : r.status === "left" ? "neutral" : "loss"}>{r.status === "active" ? "Ativo" : r.status === "left" ? "Saiu do programa" : "Bloqueado"}</Badge>
                     <Badge tone={(r.payoutMethod === "pix" ? r.pixKey : r.walletId) ? "gain" : "coin"}>{r.payoutMethod === "pix" ? (r.pixKey ? "Recebe por Pix" : "Sem chave Pix") : r.walletId ? "Recebe pelo Asaas" : "Sem carteira"}</Badge>
                     <Badge>{r.commissionBps / 100}%</Badge>
                     <Badge>{r.clicks} cliques · {r.signups} cadastros · {r.paying} assinantes</Badge>
@@ -98,12 +98,14 @@ export default async function AdminAffiliates() {
                   </div>
                   {r.blockedReason && <p className="mt-2 text-sm text-loss">Motivo: {r.blockedReason}</p>}
                 </div>
-                <form action={setAffiliateStatusAction} className="flex flex-wrap gap-2">
-                  <input type="hidden" name="id" value={r.id} />
-                  <input type="hidden" name="status" value={r.status === "active" ? "blocked" : "active"} />
-                  {r.status === "active" && <input className="input py-2 text-sm" name="reason" placeholder="Motivo do bloqueio" required />}
-                  <button className={`btn ${r.status === "active" ? "btn-danger" : "btn-primary"} py-2 text-sm`}>{r.status === "active" ? "Bloquear" : "Reativar"}</button>
-                </form>
+                {r.status !== "left" && (
+                  <form action={setAffiliateStatusAction} className="flex flex-wrap gap-2">
+                    <input type="hidden" name="id" value={r.id} />
+                    <input type="hidden" name="status" value={r.status === "active" ? "blocked" : "active"} />
+                    {r.status === "active" && <input className="input py-2 text-sm" name="reason" placeholder="Motivo do bloqueio" required />}
+                    <button className={`btn ${r.status === "active" ? "btn-danger" : "btn-primary"} py-2 text-sm`}>{r.status === "active" ? "Bloquear" : "Reativar"}</button>
+                  </form>
+                )}
               </div>
             </Panel>
           ))}
