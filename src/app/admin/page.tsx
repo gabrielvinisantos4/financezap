@@ -1,5 +1,5 @@
-import { requireAdmin } from "@/server/auth/session";
-import { businessMetrics } from "@/server/admin/admin";
+import { can, requireAdmin } from "@/server/auth/session";
+import { ACCESS_LABELS, accessOverview, businessMetrics, type AccessKind } from "@/server/admin/admin";
 import { integrations } from "@/server/config/env";
 import { Badge, Money, PageHeader, Panel } from "@/components/ui";
 
@@ -16,9 +16,33 @@ function Stat({ label, children, hint }: { label: string; children: React.ReactN
   );
 }
 
+const TONES: Record<AccessKind, "gain" | "coin" | "loss" | "neutral"> = {
+  paid: "gain",
+  card_trial: "coin",
+  trial: "coin",
+  courtesy: "neutral",
+  past_due: "loss",
+  pending: "neutral",
+  ended: "neutral",
+};
+
+const fmtDate = (d: Date) => d.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric" });
+
+/** "vence hoje", "vence amanhã", "em 12 dias", "venceu há 3 dias" */
+function untilLabel(end: Date, now: Date) {
+  const day = (d: Date) => Math.floor(new Date(d.toLocaleString("en-US", { timeZone: "America/Sao_Paulo" })).setHours(0, 0, 0, 0) / 86400_000);
+  const n = day(end) - day(now);
+  if (n === 0) return "vence hoje";
+  if (n === 1) return "vence amanhã";
+  if (n > 1) return `em ${n} dias`;
+  return n === -1 ? "venceu ontem" : `venceu há ${-n} dias`;
+}
+
 export default async function AdminHome() {
-  await requireAdmin("view_metrics");
-  const m = await businessMetrics();
+  const admin = await requireAdmin("view_metrics");
+  const [m, access] = await Promise.all([businessMetrics(), accessOverview(can(admin, "view_pii"))]);
+  const now = new Date();
+  const soon = access.filter((a) => (a.kind === "trial" || a.kind === "card_trial" || a.kind === "courtesy") && a.endsAt && a.endsAt.getTime() - now.getTime() < 7 * 86400_000).length;
   const margin = m.mrrCents - m.costsMonth.totalBrlCents;
   return (
     <>
@@ -31,10 +55,41 @@ export default async function AdminHome() {
       </PageHeader>
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-4">
         <Stat label="Receita recorrente mensal" hint="Assinaturas pagas ativas; anuais divididas por 12"><Money cents={m.mrrCents} /></Stat>
-        <Stat label="Assinantes ativos" hint={m.subscriptions.courtesy ? `${m.subscriptions.courtesy} em cortesia` : undefined}>{m.subscriptions.active}</Stat>
+        <Stat label="Assinantes ativos" hint={[`${m.subscriptions.paid} pagante${m.subscriptions.paid === 1 ? "" : "s"}`, m.subscriptions.trial ? `${m.subscriptions.trial} em teste grátis` : "", m.subscriptions.courtesy ? `${m.subscriptions.courtesy} em cortesia` : ""].filter(Boolean).join(" · ")}>{m.subscriptions.active}</Stat>
         <Stat label="Clientes cadastrados" hint={`${m.users.new30} novos em 30 dias`}>{m.users.total}</Stat>
         <Stat label="Margem estimada do mês" hint="MRR menos custos variáveis medidos (IA + WhatsApp)"><Money cents={margin} /></Stat>
       </div>
+      <Panel title="Testes e vencimentos" className="mt-6">
+        <p className="-mt-3 mb-4 text-sm text-ink-soft">
+          Quando o acesso de cada cliente termina.{soon > 0 && <> <b className="text-coin">{soon} vence{soon === 1 ? "" : "m"} nos próximos 7 dias.</b></>}
+        </p>
+        {access.length === 0 ? (
+          <p className="text-sm text-ink-faint">Nenhum cliente com assinatura ainda.</p>
+        ) : (
+          <ul className="grid">
+            {access.map((a, i) => (
+              <li key={a.userId} className={`flex flex-wrap items-center justify-between gap-x-4 gap-y-1.5 py-3 ${i ? "border-t border-line" : ""}`}>
+                <div className="min-w-0">
+                  <p className="truncate font-semibold">{a.name}</p>
+                  <p className="truncate text-xs text-ink-faint">{a.email} · {a.plan}</p>
+                </div>
+                <div className="flex flex-wrap items-center gap-2 text-sm">
+                  <Badge tone={TONES[a.kind]}>{ACCESS_LABELS[a.kind]}</Badge>
+                  {a.endsAt && a.kind !== "ended" && a.kind !== "pending" ? (
+                    <span className="money whitespace-nowrap">
+                      {a.kind === "paid" || a.kind === "past_due" ? "renova " : "até "}
+                      <b>{fmtDate(a.endsAt)}</b>
+                      <span className={`ml-1.5 text-xs ${a.endsAt.getTime() - now.getTime() < 3 * 86400_000 ? "font-semibold text-loss" : "text-ink-faint"}`}>({untilLabel(a.endsAt, now)})</span>
+                    </span>
+                  ) : a.endsAt ? (
+                    <span className="money whitespace-nowrap text-xs text-ink-faint">terminou em {fmtDate(a.endsAt)}</span>
+                  ) : null}
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </Panel>
       <div className="mt-6 grid gap-6 lg:grid-cols-3">
         <Panel title="Assinaturas">
           <dl className="grid gap-2 text-sm">

@@ -24,15 +24,12 @@ export async function businessMetrics(now = new Date()) {
     })
     .from(users);
 
-  const latestSubs = await db().execute<{ status: string; cycle: string; price_cents: number; plan_name: string; provider: string; canceled_at: Date | null }>(sql`
-    select distinct on (s.user_id) s.status::text, s.cycle::text, s.price_cents, p.name as plan_name, s.provider, s.canceled_at
-      from subscriptions s join plans p on p.id = s.plan_id
-     order by s.user_id, s.created_at desc`);
-  const subs = latestSubs.rows;
+  const subs = (await currentAccess()).filter((s) => s.role === "user");
   const active = subs.filter((s) => s.status === "active");
-  const mrrCents = active.filter((s) => s.provider !== "manual").reduce((sum, s) => sum + (s.cycle === "yearly" ? Math.round(s.price_cents / 12) : s.price_cents), 0);
+  // Receita só de quem já pagou de verdade (teste com cartão ainda não conta)
+  const mrrCents = active.filter((s) => s.kind === "paid").reduce((sum, s) => sum + (s.cycle === "yearly" ? Math.round(s.priceCents / 12) : s.priceCents), 0);
   const byPlan = new Map<string, number>();
-  for (const s of active) byPlan.set(s.plan_name, (byPlan.get(s.plan_name) ?? 0) + 1);
+  for (const s of active) byPlan.set(s.plan, (byPlan.get(s.plan) ?? 0) + 1);
 
   const [cancel] = await db()
     .select({ c: sql<number>`count(*)::int` })
@@ -68,7 +65,9 @@ export async function businessMetrics(now = new Date()) {
       pastDue: subs.filter((s) => s.status === "past_due").length,
       pending: subs.filter((s) => s.status === "pending").length,
       canceled30: cancel.c,
-      courtesy: active.filter((s) => s.provider === "manual").length,
+      paid: active.filter((s) => s.kind === "paid").length,
+      trial: active.filter((s) => s.kind === "trial" || s.kind === "card_trial").length,
+      courtesy: active.filter((s) => s.kind === "courtesy").length,
       byPlan: [...byPlan.entries()].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count),
     },
     mrrCents,
@@ -76,6 +75,77 @@ export async function businessMetrics(now = new Date()) {
     costsMonth: { aiBrlCents: aiCostBrlCents, whatsappBrlCents: waCostBrlCents, totalBrlCents: aiCostBrlCents + waCostBrlCents },
     processing: { failed30: fail.failed, inQueue: fail.queued },
   };
+}
+
+/* ------------------------------------------------------------------ */
+/* Situação de acesso de cada cliente (teste, cortesia, pago) e vencimento */
+/* ------------------------------------------------------------------ */
+export type AccessKind = "paid" | "card_trial" | "trial" | "courtesy" | "past_due" | "pending" | "ended";
+export type AccessRow = { userId: string; name: string; email: string; role: string; plan: string; cycle: string; priceCents: number; status: string; kind: AccessKind; endsAt: Date | null };
+
+export const ACCESS_LABELS: Record<AccessKind, string> = {
+  paid: "Pagante",
+  card_trial: "Teste grátis (cartão)",
+  trial: "Teste grátis",
+  courtesy: "Cortesia",
+  past_due: "Pagamento atrasado",
+  pending: "Aguardando pagamento",
+  ended: "Encerrado",
+};
+
+/**
+ * Assinatura que vale hoje para cada cliente: prefere a ativa (ou em atraso) com o
+ * vencimento mais distante; sem nenhuma, a mais recente. Uma tentativa de pagamento
+ * abandonada não esconde um teste que ainda está valendo.
+ * Cortesia = liberada pelo admin (fica na auditoria); os demais acessos sem pagamento são teste grátis.
+ */
+export async function currentAccess(): Promise<AccessRow[]> {
+  const r = await db().execute<{
+    user_id: string; name: string; email: string; role: string; plan: string; cycle: string; price_cents: number; status: string; provider: string;
+    current_period_end: Date | null; courtesy: boolean; has_paid: boolean;
+  }>(sql`
+    with cur as (
+      select distinct on (s.user_id) s.id, s.user_id, s.status::text as status, s.provider, s.cycle::text as cycle, s.price_cents, s.current_period_end, s.created_at, p.name as plan
+        from subscriptions s join plans p on p.id = s.plan_id
+       order by s.user_id, (s.status::text in ('active', 'past_due')) desc, s.current_period_end desc nulls last, s.created_at desc
+    )
+    select cur.user_id, u.name, u.email, u.role::text as role, cur.plan, cur.cycle, cur.price_cents, cur.status, cur.provider, cur.current_period_end,
+           exists (select 1 from admin_audit_logs a where a.target_user_id = cur.user_id and a.action = 'subscription.courtesy'
+                    and a.created_at between cur.created_at - interval '5 minutes' and cur.created_at + interval '5 minutes') as courtesy,
+           exists (select 1 from payments pm where pm.subscription_id = cur.id and pm.paid_at is not null) as has_paid
+      from cur join users u on u.id = cur.user_id
+     where u.status <> 'deleted'`);
+  return r.rows.map((x) => {
+    const kind: AccessKind =
+      x.status === "active"
+        ? x.provider === "manual"
+          ? x.courtesy
+            ? "courtesy"
+            : "trial"
+          : x.has_paid
+          ? "paid"
+          : "card_trial"
+        : x.status === "past_due"
+        ? "past_due"
+        : x.status === "pending"
+        ? "pending"
+        : "ended";
+    return { userId: x.user_id, name: x.name, email: x.email, role: x.role, plan: x.plan, cycle: x.cycle, priceCents: x.price_cents, status: x.status, kind, endsAt: x.current_period_end ? new Date(x.current_period_end) : null };
+  });
+}
+
+/** Lista para o painel do dono: quem está em teste/cortesia/pagando e quando vence. */
+export async function accessOverview(canSeePii: boolean) {
+  const rows = (await currentAccess()).filter((r) => r.role === "user");
+  const order: AccessKind[] = ["past_due", "trial", "card_trial", "courtesy", "pending", "paid", "ended"];
+  return rows
+    .map((r) => ({ ...r, name: canSeePii ? r.name : `${r.name.split(" ")[0].slice(0, 1)}***`, email: canSeePii ? r.email : maskEmail(r.email) }))
+    .sort((a, b) => {
+      const live = (k: AccessKind) => (k === "ended" || k === "pending" ? 1 : 0);
+      if (live(a.kind) !== live(b.kind)) return live(a.kind) - live(b.kind);
+      if (live(a.kind) === 0) return (a.endsAt?.getTime() ?? Infinity) - (b.endsAt?.getTime() ?? Infinity);
+      return order.indexOf(a.kind) - order.indexOf(b.kind);
+    });
 }
 
 export async function recentOperationalEvents(limit = 50, level?: string) {
@@ -86,7 +156,7 @@ export async function recentOperationalEvents(limit = 50, level?: string) {
 /* ------------------------------------------------------------------ */
 /* Clientes                                                             */
 /* ------------------------------------------------------------------ */
-export type CustomerRow = { id: string; name: string; email: string; phone: string; status: string; role: string; createdAt: Date; plan: string | null; subStatus: string | null; whatsappLinked: boolean };
+export type CustomerRow = { id: string; name: string; email: string; phone: string; status: string; role: string; createdAt: Date; plan: string | null; subStatus: string | null; access: AccessKind | null; endsAt: Date | null; whatsappLinked: boolean };
 
 export async function searchCustomers(admin: User, query: string, canSeePii: boolean): Promise<CustomerRow[]> {
   const q = query.trim();
@@ -101,16 +171,10 @@ export async function searchCustomers(admin: User, query: string, canSeePii: boo
     .orderBy(desc(users.createdAt))
     .limit(50);
   const ids = rows.map((r) => r.u.id);
-  const subs = ids.length
-    ? await db().execute<{ user_id: string; status: string; plan: string }>(sql`
-        select distinct on (s.user_id) s.user_id, s.status::text, p.name as plan
-          from subscriptions s join plans p on p.id = s.plan_id
-         where s.user_id in (${sql.join(ids.map((i) => sql`${i}`), sql`, `)})
-         order by s.user_id, s.created_at desc`)
-    : { rows: [] };
+  const access = ids.length ? await currentAccess() : [];
   if (canSeePii && q) await audit(admin.id, "customers.search_pii", null, null, { query: uuid ? "id" : "email" });
   return rows.map((r) => {
-    const s = subs.rows.find((x) => x.user_id === r.u.id);
+    const s = access.find((x) => x.userId === r.u.id);
     return {
       id: r.u.id,
       name: canSeePii ? r.u.name : `${r.u.name.split(" ")[0].slice(0, 1)}***`,
@@ -121,6 +185,8 @@ export async function searchCustomers(admin: User, query: string, canSeePii: boo
       createdAt: r.u.createdAt,
       plan: s?.plan ?? null,
       subStatus: s?.status ?? null,
+      access: s?.kind ?? null,
+      endsAt: s?.endsAt ?? null,
       whatsappLinked: Boolean(r.waId),
     };
   });

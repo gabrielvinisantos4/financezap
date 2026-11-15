@@ -2,7 +2,7 @@ import { afterAll, beforeEach, describe, expect, it } from "vitest";
 import { eq } from "drizzle-orm";
 import { closeDb, db, withUser } from "@/server/db/client";
 import { adminAuditLogs, plans, users } from "@/server/db/schema";
-import { businessMetrics, savePlan, searchCustomers, setUserBlocked } from "@/server/admin/admin";
+import { accessOverview, audit, businessMetrics, savePlan, searchCustomers, setUserBlocked } from "@/server/admin/admin";
 import { exportUserData, deleteAccount } from "@/server/account/privacy";
 import { grantManualSubscription } from "@/server/billing/subscriptions";
 import { createEntry } from "@/server/finance/engine";
@@ -33,7 +33,27 @@ describe("área administrativa", () => {
     expect(dump).not.toContain("987654");
     expect(dump).not.toContain("Segredo");
     expect(m.subscriptions.active).toBe(1);
+    expect(m.subscriptions.trial).toBe(1);
+    expect(m.subscriptions.courtesy).toBe(0);
+  });
+
+  it("separa teste grátis de cortesia e mostra quando cada acesso vence", async () => {
+    const owner = await makeAdmin("owner", true);
+    const teste = await makeUser({ name: "Teste Silva" });
+    const cortesia = await makeUser({ name: "Cortesia Souza" });
+    await grantManualSubscription(teste.id, "pro", 15);
+    await grantManualSubscription(cortesia.id, "pro", 30);
+    await audit(owner.id, "subscription.courtesy", cortesia.id, null, { plan: "pro", days: 30 });
+    const m = await businessMetrics();
+    expect(m.subscriptions.trial).toBe(1);
     expect(m.subscriptions.courtesy).toBe(1);
+    expect(m.mrrCents).toBe(0);
+    const rows = await accessOverview(true);
+    expect(rows.map((r) => [r.name, r.kind])).toEqual([["Teste Silva", "trial"], ["Cortesia Souza", "courtesy"]]);
+    const dias = (rows[0].endsAt!.getTime() - Date.now()) / 86400_000;
+    expect(dias).toBeGreaterThan(14.9);
+    expect(dias).toBeLessThan(15.1);
+    expect((await accessOverview(false))[0].name).not.toContain("Silva");
   });
 
   it("sem permissão de PII, dados aparecem mascarados e busca por e-mail não funciona", async () => {

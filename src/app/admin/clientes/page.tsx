@@ -1,5 +1,5 @@
 import { requireAdmin, can } from "@/server/auth/session";
-import { listAllPlans, searchCustomers } from "@/server/admin/admin";
+import { ACCESS_LABELS, listAllPlans, searchCustomers } from "@/server/admin/admin";
 import { Badge, PageHeader, Panel } from "@/components/ui";
 import { ActionForm, Submit } from "@/components/forms";
 import { blockUserAction, grantCourtesyAction } from "@/app/actions/admin";
@@ -33,7 +33,10 @@ export default async function Customers({ searchParams }: { searchParams: Promis
                 <div className="mt-2 flex flex-wrap gap-1.5">
                   <Badge tone={c.status === "active" ? "gain" : c.status === "blocked" ? "loss" : "neutral"}>{c.status === "active" ? "Ativo" : c.status === "blocked" ? "Bloqueado" : "Excluído"}</Badge>
                   {c.role !== "user" && <Badge tone="coin">{c.role}</Badge>}
-                  <Badge>{c.plan ? `${c.plan} · ${c.subStatus}` : "sem assinatura"}</Badge>
+                  <Badge>{c.plan ? `${c.plan} · ${c.access ? ACCESS_LABELS[c.access] : c.subStatus}` : "sem assinatura"}</Badge>
+                  {c.endsAt && c.access && c.access !== "ended" && c.access !== "pending" && (
+                    <Badge tone="coin">{c.access === "paid" || c.access === "past_due" ? "renova" : "até"} {c.endsAt.toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}</Badge>
+                  )}
                   <Badge tone={c.whatsappLinked ? "gain" : "neutral"}>{c.whatsappLinked ? "WhatsApp vinculado" : "sem WhatsApp"}</Badge>
                 </div>
               </div>
