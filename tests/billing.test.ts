@@ -16,17 +16,25 @@ function noTrial() {
 }
 
 const TOKEN = "test-asaas-webhook-token-0123456789abcdef";
+const BILLING = { postalCode: "86690000", address: "Rua das Flores", addressNumber: "123", complement: null, province: "Centro" };
 
 /** Simula a API do Asaas (sandbox) para os testes. */
 function fakeAsaas() {
-  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0, lastCheckout: null as null | Record<string, unknown>, remoteNextDue: "2026-11-02" };
+  const state = { payments: new Map<string, Record<string, unknown>>(), calls: [] as string[], subSeq: 0, lastCheckout: null as null | Record<string, unknown>, remoteNextDue: "2026-11-02", customerBodies: [] as Record<string, unknown>[], existingCustomer: null as null | string };
   setAsaasFetcher(async (input, init) => {
     const url = String(input);
     const method = init?.method ?? "GET";
     state.calls.push(`${method} ${url.replace(/^.*\/v3/, "")}`);
     const json = (b: unknown, status = 200) => new Response(JSON.stringify(b), { status, headers: { "Content-Type": "application/json" } });
-    if (method === "POST" && url.endsWith("/customers")) return json({ id: "cus_TEST" });
-    if (method === "GET" && url.includes("/customers?")) return json({ data: [] });
+    if (method === "POST" && url.endsWith("/customers")) {
+      state.customerBodies.push(JSON.parse(String(init?.body)));
+      return json({ id: "cus_TEST" });
+    }
+    if (method === "POST" && /\/customers\/[^/]+$/.test(url)) {
+      state.customerBodies.push(JSON.parse(String(init?.body)));
+      return json({ id: url.split("/").pop() });
+    }
+    if (method === "GET" && url.includes("/customers?")) return json({ data: state.existingCustomer ? [{ id: state.existingCustomer }] : [] });
     if (method === "POST" && url.endsWith("/checkouts")) {
       state.lastCheckout = JSON.parse(String(init?.body));
       return json({ id: "chk_TEST1" });
@@ -149,7 +157,7 @@ describe("assinaturas com Asaas", () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
     await grantManualSubscription(u.id, "basico", 30); // período de teste
-    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "123.456.789-09" });
+    const r = await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "123.456.789-09", billing: BILLING });
     expect(r.redirectUrl).toBe("https://sandbox.asaas.com/checkoutSession/show?id=chk_TEST1");
     expect(asaas.lastCheckout).toMatchObject({ billingTypes: ["CREDIT_CARD"], chargeTypes: ["RECURRENT"], customer: "cus_TEST", subscription: { cycle: "MONTHLY" } });
 
@@ -167,10 +175,29 @@ describe("assinaturas com Asaas", () => {
     expect(all.find((s) => s.provider === "asaas")?.status).toBe("active");
   });
 
+  it("cartão exige endereço de cobrança e manda o endereço ao criar o cliente no Asaas", async () => {
+    const asaas = fakeAsaas();
+    const u = await makeUser();
+    await expect(startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" })).rejects.toThrow(/endereço/);
+    expect(asaas.calls.some((c) => c.startsWith("POST /customers"))).toBe(false);
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: BILLING });
+    expect(asaas.customerBodies[0]).toMatchObject({ cpfCnpj: "12345678909", postalCode: "86690000", address: "Rua das Flores", addressNumber: "123", province: "Centro" });
+  });
+
+  it("cliente que já existia no Asaas sem endereço é atualizado antes do checkout do cartão", async () => {
+    const asaas = fakeAsaas();
+    asaas.existingCustomer = "cus_OLD";
+    const u = await makeUser();
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: BILLING });
+    expect(asaas.calls).toContain("POST /customers/cus_OLD");
+    expect(asaas.customerBodies[0]).toMatchObject({ cpfCnpj: "12345678909", postalCode: "86690000", addressNumber: "123" });
+    expect(asaas.lastCheckout).toMatchObject({ customer: "cus_OLD" });
+  });
+
   it("pagamento do cartão chegando antes do SUBSCRIPTION_CREATED também vincula", async () => {
     const asaas = fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: BILLING });
     asaas.payments.set("pay_c2", { id: "pay_c2", customer: "cus_TEST", subscription: "sub_CARD7", status: "CONFIRMED", value: 19.9, dueDate: "2026-11-02", confirmedDate: "2026-11-02" });
     await handleAsaasWebhook(event("evt_p2", "PAYMENT_CONFIRMED", { id: "pay_c2", customer: "cus_TEST", subscription: "sub_CARD7", status: "CONFIRMED", value: 19.9 }), TOKEN);
     expect((await getEntitlement(u.id)).active).toBe(true);
@@ -179,7 +206,7 @@ describe("assinaturas com Asaas", () => {
   it("checkout expirado encerra a tentativa pendente", async () => {
     fakeAsaas();
     const u = await makeUser();
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: BILLING });
     await handleAsaasWebhook(JSON.stringify({ id: "evt_x9", event: "CHECKOUT_EXPIRED", checkout: { id: "chk_TEST1", customer: "cus_TEST", status: "EXPIRED" } }), TOKEN);
     const [s] = await db().select().from(subscriptions).where(eq(subscriptions.userId, u.id));
     expect(s.status).toBe("expired");
@@ -193,7 +220,7 @@ describe("assinaturas com Asaas", () => {
     expect(await cardTrialFirstCharge(u.id)).toBe(due);
     expect((await getEntitlement(u.id)).active).toBe(false); // sem cartão, sem acesso
 
-    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    await startCheckout(u.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: BILLING });
     expect(asaas.lastCheckout).toMatchObject({ subscription: { cycle: "MONTHLY", nextDueDate: `${due} 12:00:00` } });
     expect((await getEntitlement(u.id)).active).toBe(false); // ainda não cadastrou o cartão
 

@@ -30,6 +30,9 @@ export type AsaasPayment = {
 
 export type AsaasSplit = { walletId: string; percentualValue: number };
 
+/** Endereço de cobrança do pagador. O Asaas exige no cartão; a cidade sai do CEP. */
+export type AsaasAddress = { postalCode: string; address: string; addressNumber: string; complement?: string | null; province: string };
+
 export type AsaasSubscription = { id: string; customer: string; status: string; value: number; cycle: string; nextDueDate: string; externalReference?: string | null; deleted?: boolean; split?: { walletId: string; percentualValue?: number | null }[] | null };
 
 type Fetcher = typeof fetch;
@@ -64,8 +67,12 @@ export function checkoutUrl(id: string, link?: string | null): string {
 }
 
 export const asaas = {
-  createCustomer: (input: { name: string; email: string; cpfCnpj: string; mobilePhone?: string | null; externalReference: string }) =>
+  createCustomer: (input: { name: string; email: string; cpfCnpj: string; mobilePhone?: string | null; externalReference: string } & Partial<AsaasAddress>) =>
     call<{ id: string }>("POST", "/customers", { ...input, notificationDisabled: false }),
+
+  /** Atualiza CPF/CNPJ e endereço de um cliente já criado (ex.: antes de pagar com cartão). */
+  updateCustomer: (customerId: string, input: { cpfCnpj?: string } & Partial<AsaasAddress>) =>
+    call<{ id: string }>("POST", `/customers/${encodeURIComponent(customerId)}`, input),
 
   /** Assinatura por Pix: a cada ciclo o Asaas gera uma cobrança Pix (QR Code na fatura). */
   createPixSubscription: (input: { customer: string; value: number; nextDueDate: string; cycle: "MONTHLY" | "YEARLY"; description: string; externalReference: string; split?: AsaasSplit[] }) =>

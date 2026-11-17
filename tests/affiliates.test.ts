@@ -121,7 +121,7 @@ describe("programa de afiliados", () => {
     await setAffiliateWallet(aff.userId, WALLET);
     const client = await makeUser();
     await attachReferral(client.id, "maria");
-    await startCheckout(client.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909" });
+    await startCheckout(client.id, { planSlug: "basico", cycle: "monthly", method: "credit_card", cpfCnpj: "12345678909", billing: { postalCode: "86690000", address: "Rua das Flores", addressNumber: "123", complement: null, province: "Centro" } });
     expect(st.bodies.get("POST /checkouts")).toMatchObject({ splits: [{ walletId: WALLET, percentualValue: 30 }] });
 
     // O Asaas criou a assinatura sem o split: o sistema aplica na assinatura e na 1ª cobrança

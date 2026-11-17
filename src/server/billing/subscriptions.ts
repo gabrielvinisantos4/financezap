@@ -7,7 +7,7 @@ import { safeEqual } from "../security/crypto";
 import { addDays, addMonths, todayIn } from "../finance/dates";
 import { FinanceError } from "../finance/errors";
 import { opEvent } from "../ops/events";
-import { asaas, AsaasError, checkoutUrl, type AsaasPayment, type AsaasSplit } from "./asaas";
+import { asaas, AsaasError, checkoutUrl, type AsaasAddress, type AsaasPayment, type AsaasSplit } from "./asaas";
 import { applyTransferEvent, ensureRemoteSplit, recordCommission, reverseCommission, splitForCustomer } from "../affiliates/affiliates";
 
 export async function listActivePlans(): Promise<Plan[]> {
@@ -43,6 +43,19 @@ export const checkoutSchema = z.object({
     .string()
     .transform((v) => v.replace(/\D/g, ""))
     .refine((v) => v.length === 0 || v.length === 11 || v.length === 14, "CPF ou CNPJ inválido"),
+  // Endereço de cobrança: obrigatório no cartão (exigência do Asaas). Vai só para o Asaas, não fica no nosso banco.
+  billing: z
+    .object({
+      postalCode: z
+        .string()
+        .transform((v) => v.replace(/\D/g, ""))
+        .refine((v) => v.length === 8, "CEP inválido. Use os 8 números."),
+      address: z.string().trim().min(2, "Informe a rua do endereço de cobrança").max(120),
+      addressNumber: z.string().trim().min(1, "Informe o número do endereço (ou S/N)").max(10),
+      complement: z.string().trim().max(60).optional().transform((v) => v || null),
+      province: z.string().trim().min(2, "Informe o bairro do endereço de cobrança").max(60),
+    })
+    .optional(),
 });
 
 export type CheckoutResult = { redirectUrl: string | null; subscriptionId: string };
@@ -53,19 +66,26 @@ function spDateTime(now = new Date()) {
   return sp.toISOString().slice(0, 19).replace("T", " ");
 }
 
-async function ensureAsaasCustomer(userId: string, cpfCnpj: string): Promise<string> {
+async function ensureAsaasCustomer(userId: string, cpfCnpj: string, billing?: AsaasAddress): Promise<string> {
   const [existing] = await db()
     .select({ id: subscriptions.providerCustomerId })
     .from(subscriptions)
     .where(and(eq(subscriptions.userId, userId), eq(subscriptions.provider, "asaas")))
     .orderBy(desc(subscriptions.createdAt))
     .limit(1);
-  if (existing?.id) return existing.id;
-  const found = await asaas.findCustomerByExternalReference(userId).catch(() => ({ data: [] as { id: string }[] }));
-  if (found.data[0]) return found.data[0].id;
+  let customerId = existing?.id ?? null;
+  if (!customerId) {
+    const found = await asaas.findCustomerByExternalReference(userId).catch(() => ({ data: [] as { id: string }[] }));
+    customerId = found.data[0]?.id ?? null;
+  }
+  // Cliente já existe no Asaas (ex.: tentou antes sem endereço): atualiza CPF e endereço antes de cobrar
+  if (customerId) {
+    if (billing) await asaas.updateCustomer(customerId, { cpfCnpj, ...billing });
+    return customerId;
+  }
   const [user] = await db().select().from(users).where(eq(users.id, userId));
   if (!user) throw new FinanceError("not_found", "Usuário não encontrado.");
-  const c = await asaas.createCustomer({ name: user.name, email: user.email, cpfCnpj, mobilePhone: user.phoneE164?.replace(/^55/, "") ?? null, externalReference: user.id });
+  const c = await asaas.createCustomer({ name: user.name, email: user.email, cpfCnpj, mobilePhone: user.phoneE164?.replace(/^55/, "") ?? null, externalReference: user.id, ...(billing ?? {}) });
   return c.id;
 }
 
@@ -138,13 +158,17 @@ export async function startCheckout(userId: string, input: z.infer<typeof checko
     return { redirectUrl: `${env().APP_URL}/app/assinatura?pagamento=teste`, subscriptionId: "" };
   }
   if (!input.cpfCnpj) throw new FinanceError("invalid", "Informe o CPF ou CNPJ do pagador.");
+  if (input.method === "credit_card" && !input.billing) throw new FinanceError("invalid", "Informe o endereço de cobrança do cartão.");
 
   let customerId: string;
   try {
-    customerId = await ensureAsaasCustomer(userId, input.cpfCnpj);
+    customerId = await ensureAsaasCustomer(userId, input.cpfCnpj, input.method === "credit_card" ? input.billing : undefined);
   } catch (err) {
     await opEvent("error", "billing.customer_failed", "Falha ao cadastrar cliente no Asaas", { error: String((err as Error).message).slice(0, 300) }, userId);
-    throw new FinanceError("invalid", "Não foi possível iniciar o pagamento. Confira o CPF/CNPJ e tente novamente.");
+    const msg = err instanceof AsaasError && /cep|postalCode|endere|address|province|bairro/i.test(err.message)
+      ? "O Asaas não aceitou o endereço de cobrança. Confira o CEP, a rua, o número e o bairro."
+      : "Não foi possível iniciar o pagamento. Confira o CPF/CNPJ e tente novamente.";
+    throw new FinanceError("invalid", msg);
   }
 
   // Cliente indicado por afiliado com carteira cadastrada: a comissão vai por split do Asaas

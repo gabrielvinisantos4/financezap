@@ -1,7 +1,7 @@
 "use client";
 
 import { Check, CreditCard, Lock, QrCode } from "lucide-react";
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { ActionForm, Submit } from "./forms";
 import { checkoutAction } from "@/app/actions/app";
 
@@ -11,6 +11,94 @@ function cpfMask(v: string) {
   const d = v.replace(/\D/g, "").slice(0, 14);
   if (d.length <= 11) return d.replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d)/, "$1.$2").replace(/(\d{3})(\d{1,2})$/, "$1-$2");
   return d.replace(/^(\d{2})(\d)/, "$1.$2").replace(/^(\d{2})\.(\d{3})(\d)/, "$1.$2.$3").replace(/\.(\d{3})(\d)/, ".$1/$2").replace(/(\d{4})(\d)/, "$1-$2");
+}
+
+function cepMask(v: string) {
+  return v.replace(/\D/g, "").slice(0, 8).replace(/^(\d{5})(\d)/, "$1-$2");
+}
+
+/** Endereço de cobrança do cartão (exigido pelo Asaas). Rua, bairro e cidade vêm do CEP pelo ViaCEP. */
+function BillingAddressFields() {
+  const [cep, setCep] = useState("");
+  const [address, setAddress] = useState("");
+  const [province, setProvince] = useState("");
+  const [city, setCity] = useState<string | null>(null);
+  const [cepError, setCepError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const numberRef = useRef<HTMLInputElement>(null);
+
+  async function lookup(raw: string) {
+    const digits = raw.replace(/\D/g, "");
+    if (digits.length !== 8) return;
+    setLoading(true);
+    setCepError(null);
+    try {
+      const res = await fetch(`https://viacep.com.br/ws/${digits}/json/`, { signal: AbortSignal.timeout(6000) });
+      const data = (await res.json()) as { erro?: boolean; logradouro?: string; bairro?: string; localidade?: string; uf?: string };
+      if (data.erro) {
+        setCity(null);
+        setCepError("CEP não encontrado. Confira os números.");
+        return;
+      }
+      if (data.logradouro) setAddress(data.logradouro);
+      if (data.bairro) setProvince(data.bairro);
+      setCity(data.localidade ? `${data.localidade}${data.uf ? ` - ${data.uf}` : ""}` : null);
+      numberRef.current?.focus();
+    } catch {
+      // Sem internet ou ViaCEP fora do ar: a pessoa preenche à mão
+      setCity(null);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  return (
+    <fieldset className="grid gap-4">
+      <legend className="mb-2 font-semibold">Endereço de cobrança do cartão</legend>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,180px)_1fr]">
+        <label className="field">
+          <span>CEP</span>
+          <input
+            className={`input money ${cepError ? "border-loss" : ""}`}
+            name="postalCode"
+            inputMode="numeric"
+            autoComplete="postal-code"
+            placeholder="00000-000"
+            value={cep}
+            onChange={(e) => {
+              const v = cepMask(e.target.value);
+              setCep(v);
+              if (v.replace(/\D/g, "").length === 8) lookup(v);
+            }}
+            aria-invalid={Boolean(cepError)}
+            required
+          />
+          <small className={cepError ? "text-loss" : "text-ink-faint"}>{cepError ?? (loading ? "Buscando endereço…" : city ?? "Preenche rua e bairro automaticamente.")}</small>
+        </label>
+        <label className="field">
+          <span>Rua</span>
+          <input className="input" name="address" autoComplete="address-line1" value={address} onChange={(e) => setAddress(e.target.value)} required />
+        </label>
+      </div>
+      <div className="grid gap-4 sm:grid-cols-[minmax(0,120px)_1fr_1fr]">
+        <label className="field">
+          <span>Número</span>
+          <input ref={numberRef} className="input" name="addressNumber" inputMode="numeric" placeholder="123 ou S/N" required />
+        </label>
+        <label className="field">
+          <span>Complemento <span className="text-ink-faint">(opcional)</span></span>
+          <input className="input" name="complement" autoComplete="address-line2" placeholder="Apto, bloco…" />
+        </label>
+        <label className="field">
+          <span>Bairro</span>
+          <input className="input" name="province" value={province} onChange={(e) => setProvince(e.target.value)} required />
+        </label>
+      </div>
+      <p className="text-xs text-ink-faint">
+        <Lock size={12} strokeWidth={2} aria-hidden="true" className="mr-1 inline-block align-[-0.1em]" />O endereço é exigido para pagamentos com cartão. Ele vai direto para o Asaas e não fica salvo no FinanceZap.
+      </p>
+    </fieldset>
+  );
 }
 
 export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil = null, inTrial = false }: { plans: P[]; initial?: string; trialUntil?: string | null; pixTrialUntil?: string | null; inTrial?: boolean }) {
@@ -82,6 +170,8 @@ export function CheckoutForm({ plans, initial, trialUntil = null, pixTrialUntil 
         </label>
         <p className="text-xs text-ink-faint"><Lock size={12} strokeWidth={2} aria-hidden="true" className="mr-1 inline-block align-[-0.1em]" />Por que pedimos? Toda cobrança no Brasil precisa do CPF de quem paga (regra do Banco Central). Ele vai direto para o Asaas, a instituição que processa o pagamento, e não fica salvo no FinanceZap.</p>
       </div>}
+
+      {method === "credit_card" && <BillingAddressFields />}
 
       <div className="flex flex-wrap items-center gap-4 border-t border-line pt-5">
         <Submit className="btn btn-primary text-base" pendingText="Abrindo pagamento…">

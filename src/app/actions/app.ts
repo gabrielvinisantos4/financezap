@@ -251,7 +251,19 @@ export async function checkoutAction(_: FormState, form: FormData): Promise<Form
   const user = await requireUser();
   if (!(await rateLimit(`checkout:${user.id}`, 6, 3600))) return { error: "Muitas tentativas de pagamento. Aguarde alguns minutos." };
   const result = await guard(async () => {
-    const input = checkoutSchema.parse({ planSlug: form.get("plan"), cycle: form.get("cycle"), method: form.get("method"), cpfCnpj: form.get("cpfCnpj") ?? "" });
+    const method = form.get("method");
+    const field = (k: string) => String(form.get(k) ?? "");
+    const input = checkoutSchema.parse({
+      planSlug: form.get("plan"),
+      cycle: form.get("cycle"),
+      method,
+      cpfCnpj: form.get("cpfCnpj") ?? "",
+      // Endereço de cobrança só no cartão
+      billing:
+        method === "credit_card"
+          ? { postalCode: field("postalCode"), address: field("address"), addressNumber: field("addressNumber"), complement: field("complement"), province: field("province") }
+          : undefined,
+    });
     return startCheckout(user.id, input);
   });
   if (result && "error" in result) return result;
