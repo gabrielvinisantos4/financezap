@@ -134,3 +134,37 @@ describe("validação de entrada", () => {
     await expect(withUser(u.id, (tx) => createEntry(tx, u.id, { kind: "expense", amountCents: 100, description: "   ", occurredOn: TODAY, source: "web" }, "user", TODAY))).rejects.toThrow();
   });
 });
+
+describe("uso dos clientes", () => {
+  it("separa quem usa, quem esfriou, quem parou e quem nunca usou — sem expor lançamentos", async () => {
+    const { usageEvents } = await import("@/server/db/schema");
+    const { usageOverview } = await import("@/server/admin/admin");
+    const now = new Date();
+    const daysAgo = (n: number) => new Date(now.getTime() - n * 86400_000);
+    const ativo = await makeUser({ name: "Ativo Lima" });
+    const esfriando = await makeUser({ name: "Esfriando Rocha" });
+    const parado = await makeUser({ name: "Parado Dias" });
+    const nunca = await makeUser({ name: "Nunca Alves" });
+    for (const u of [ativo, esfriando, parado, nunca]) await grantManualSubscription(u.id, "pro", 15);
+    await db().insert(usageEvents).values([
+      { userId: ativo.id, type: "wa_inbound", createdAt: daysAgo(1) },
+      { userId: ativo.id, type: "wa_inbound", createdAt: daysAgo(2) },
+      { userId: ativo.id, type: "wa_inbound", createdAt: daysAgo(20) },
+      { userId: ativo.id, type: "wa_outbound", createdAt: daysAgo(1) },
+      { userId: esfriando.id, type: "wa_inbound", createdAt: daysAgo(12) },
+      { userId: parado.id, type: "wa_inbound", createdAt: daysAgo(45) },
+    ]);
+    await withUser(ativo.id, (tx) => createEntry(tx, ativo.id, { kind: "expense", amountCents: 123456, description: "Segredo", occurredOn: TODAY, source: "web" }, "user", TODAY));
+
+    const rows = await usageOverview(true, now);
+    const by = (id: string) => rows.find((r) => r.userId === id)!;
+    expect(by(ativo.id)).toMatchObject({ bucket: "active", messages7: 2, messages30: 3, messagesTotal: 3, activeDays30: 3 });
+    expect(by(esfriando.id).bucket).toBe("cooling");
+    expect(by(parado.id)).toMatchObject({ bucket: "idle", messages30: 0, messagesTotal: 1 });
+    expect(by(nunca.id)).toMatchObject({ bucket: "never", messagesTotal: 0, lastMessageAt: null, access: "trial" });
+    const dump = JSON.stringify(rows);
+    expect(dump).not.toContain("123456");
+    expect(dump).not.toContain("Segredo");
+    expect((await usageOverview(false, now)).find((r) => r.userId === ativo.id)!.name).not.toContain("Lima");
+  });
+});

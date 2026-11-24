@@ -269,3 +269,102 @@ export async function failedMessages(limit = 30) {
     .orderBy(desc(inboundMessages.receivedAt))
     .limit(limit);
 }
+
+/* ------------------------------------------------------------------ */
+/* Uso: quem está de fato usando o robô                                 */
+/* ------------------------------------------------------------------ */
+/**
+ * Mede o uso só por sinais de operação (mensagens recebidas no WhatsApp e
+ * entradas no painel). Não lê lançamentos, valores nem o texto das mensagens.
+ */
+export type UsageBucket = "active" | "cooling" | "idle" | "never";
+export type UsageRow = {
+  userId: string;
+  name: string;
+  email: string;
+  createdAt: Date;
+  plan: string | null;
+  access: AccessKind | null;
+  endsAt: Date | null;
+  whatsappLinked: boolean;
+  lastMessageAt: Date | null;
+  lastLoginAt: Date | null;
+  messages7: number;
+  messages30: number;
+  messagesTotal: number;
+  activeDays30: number;
+  bucket: UsageBucket;
+};
+
+export const USAGE_LABELS: Record<UsageBucket, string> = {
+  active: "Usando",
+  cooling: "Esfriando",
+  idle: "Parou de usar",
+  never: "Nunca usou",
+};
+
+export const USAGE_HINTS: Record<UsageBucket, string> = {
+  active: "Mandou mensagem nos últimos 7 dias",
+  cooling: "Última mensagem entre 8 e 30 dias atrás",
+  idle: "Mais de 30 dias sem mandar mensagem",
+  never: "Nunca mandou mensagem para o robô",
+};
+
+/** Acessos que contam como "cliente com acesso liberado" (pagando, testando ou em cortesia). */
+export const LIVE_ACCESS: AccessKind[] = ["paid", "card_trial", "trial", "courtesy", "past_due"];
+
+export function usageBucket(lastMessageAt: Date | null, now = new Date()): UsageBucket {
+  if (!lastMessageAt) return "never";
+  const days = (now.getTime() - lastMessageAt.getTime()) / 86400_000;
+  if (days <= 7) return "active";
+  if (days <= 30) return "cooling";
+  return "idle";
+}
+
+export async function usageOverview(canSeePii: boolean, now = new Date()): Promise<UsageRow[]> {
+  const d7 = new Date(now.getTime() - 7 * 86400_000);
+  const d30 = new Date(now.getTime() - 30 * 86400_000);
+  const r = await db().execute<{
+    id: string; name: string; email: string; created_at: Date; wa_linked: boolean;
+    last_msg: Date | null; msgs7: number | null; msgs30: number | null; msgs_total: number | null; days30: number | null; last_login: Date | null;
+  }>(sql`
+    select u.id, u.name, u.email, u.created_at,
+           exists (select 1 from whatsapp_identities w where w.user_id = u.id) as wa_linked,
+           ue.last_msg, ue.msgs7, ue.msgs30, ue.msgs_total, ue.days30, s.last_login
+      from users u
+      left join (
+        select user_id,
+               max(created_at) as last_msg,
+               count(*) filter (where created_at >= ${d7})::int as msgs7,
+               count(*) filter (where created_at >= ${d30})::int as msgs30,
+               count(*)::int as msgs_total,
+               count(distinct (created_at at time zone 'America/Sao_Paulo')::date) filter (where created_at >= ${d30})::int as days30
+          from usage_events
+         where type = 'wa_inbound' and user_id is not null
+         group by user_id
+      ) ue on ue.user_id = u.id
+      left join (select user_id, max(created_at) as last_login from sessions group by user_id) s on s.user_id = u.id
+     where u.role = 'user' and u.status <> 'deleted'`);
+  const access = new Map((await currentAccess()).map((a) => [a.userId, a]));
+  return r.rows.map((x) => {
+    const a = access.get(x.id);
+    const lastMessageAt = x.last_msg ? new Date(x.last_msg) : null;
+    return {
+      userId: x.id,
+      name: canSeePii ? x.name : `${x.name.split(" ")[0].slice(0, 1)}***`,
+      email: canSeePii ? x.email : maskEmail(x.email),
+      createdAt: new Date(x.created_at),
+      plan: a?.plan ?? null,
+      access: a?.kind ?? null,
+      endsAt: a?.endsAt ?? null,
+      whatsappLinked: Boolean(x.wa_linked),
+      lastMessageAt,
+      lastLoginAt: x.last_login ? new Date(x.last_login) : null,
+      messages7: x.msgs7 ?? 0,
+      messages30: x.msgs30 ?? 0,
+      messagesTotal: x.msgs_total ?? 0,
+      activeDays30: x.days30 ?? 0,
+      bucket: usageBucket(lastMessageAt, now),
+    };
+  });
+}
